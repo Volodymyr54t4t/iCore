@@ -32,20 +32,16 @@ npm start
 
 Облікові дані змінюються в `.env`.
 
-### PostgreSQL (необовʼязково)
+### PostgreSQL (Neon)
 
-Якщо встановлений Docker:
-
-```bash
-docker compose up -d
-```
-
-У `.env` поставте:
+У `.env` вкажіть рядок підключення:
 
 ```
 USE_POSTGRES=1
-DATABASE_URL=postgres://icore:icore@localhost:5432/icore
+DATABASE_URL=postgresql://USER:PASSWORD@HOST/neondb?sslmode=require
 ```
+
+При старті сервер сам створює таблиці, адміна і каталог.
 
 ## Можливості
 

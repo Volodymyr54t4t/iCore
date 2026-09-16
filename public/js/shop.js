@@ -31,17 +31,25 @@ async function load() {
   if (category) params.set("category", category);
   if (searchEl.value.trim()) params.set("q", searchEl.value.trim());
   if (sortEl.value) params.set("sort", sortEl.value);
-  const products = await api("/api/products?" + params.toString());
-  window.__products = products;
-  productsEl.innerHTML = products.length
-    ? products.map(card).join("")
-    : `<div class="empty">Нічого не знайдено</div>`;
+  try {
+    const products = await api("/api/products?" + params.toString());
+    window.__products = products;
+    productsEl.innerHTML = products.length
+      ? products.map(card).join("")
+      : `<div class="empty">Нічого не знайдено</div>`;
+  } catch (error) {
+    productsEl.innerHTML = `<div class="empty">${error.message}</div>`;
+  }
 }
 
-const categories = await api("/api/categories");
-chipsEl.innerHTML = categories
-  .map((c) => `<button class="chip" data-category="${c.slug}" id="${c.slug}">${c.name}</button>`)
-  .join("");
+try {
+  const categories = await api("/api/categories");
+  chipsEl.innerHTML = categories
+    .map((c) => `<button class="chip" data-category="${c.slug}" id="${c.slug}">${c.name}</button>`)
+    .join("");
+} catch (error) {
+  chipsEl.innerHTML = `<div class="empty">${error.message}</div>`;
+}
 
 document.querySelector(".filters").addEventListener("click", (e) => {
   const chip = e.target.closest("[data-category]");

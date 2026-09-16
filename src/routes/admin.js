@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { pool } from "../db/pool.js";
 import { requireAdmin } from "../middleware/auth.js";
+import { asyncHandler } from "../utils/async.js";
 
 export const adminRouter = Router();
 
@@ -35,7 +36,7 @@ function mapProduct(row) {
   };
 }
 
-adminRouter.post("/login", async (req, res) => {
+adminRouter.post("/login", asyncHandler(async (req, res) => {
   const { email, password } = req.body || {};
   if (!email || !password) {
     return res.status(400).json({ error: "Вкажіть email і пароль" });
@@ -47,12 +48,14 @@ adminRouter.post("/login", async (req, res) => {
     return res.status(401).json({ error: "Невірний логін або пароль" });
   }
 
-  const token = jwt.sign({ id: admin.id, email: admin.email, name: admin.name }, process.env.JWT_SECRET, {
-    expiresIn: "7d",
-  });
+  const token = jwt.sign(
+    { id: admin.id, email: admin.email, name: admin.name },
+    process.env.JWT_SECRET || "icore-dev-secret-change-in-production",
+    { expiresIn: "7d" }
+  );
   res.cookie("token", token, cookieOptions());
   res.json({ name: admin.name, email: admin.email });
-});
+}));
 
 adminRouter.post("/logout", (_req, res) => {
   res.clearCookie("token");
@@ -63,7 +66,7 @@ adminRouter.get("/me", requireAdmin, (req, res) => {
   res.json(req.admin);
 });
 
-adminRouter.get("/stats", requireAdmin, async (_req, res) => {
+adminRouter.get("/stats", requireAdmin, asyncHandler(async (_req, res) => {
   const [{ rows: products }, { rows: orders }, { rows: revenue }, { rows: recent }] = await Promise.all([
     pool.query("SELECT COUNT(*)::int AS count FROM products"),
     pool.query("SELECT COUNT(*)::int AS count FROM orders"),
@@ -77,18 +80,18 @@ adminRouter.get("/stats", requireAdmin, async (_req, res) => {
     revenue: revenue[0].sum,
     recentOrders: recent,
   });
-});
+}));
 
-adminRouter.get("/products", requireAdmin, async (_req, res) => {
+adminRouter.get("/products", requireAdmin, asyncHandler(async (_req, res) => {
   const { rows } = await pool.query(
     `SELECT p.*, c.name AS category_name, c.slug AS category_slug
      FROM products p JOIN categories c ON c.id = p.category_id
      ORDER BY p.id DESC`
   );
   res.json(rows.map(mapProduct));
-});
+}));
 
-adminRouter.post("/products", requireAdmin, async (req, res) => {
+adminRouter.post("/products", requireAdmin, asyncHandler(async (req, res) => {
   const body = req.body || {};
   const required = ["categoryId", "slug", "name", "price", "stock"];
   if (required.some((key) => body[key] === undefined || body[key] === "")) {
@@ -121,9 +124,9 @@ adminRouter.post("/products", requireAdmin, async (req, res) => {
     if (error.code === "23505") return res.status(409).json({ error: "Slug уже зайнятий" });
     res.status(400).json({ error: "Не вдалося зберегти товар" });
   }
-});
+}));
 
-adminRouter.put("/products/:id", requireAdmin, async (req, res) => {
+adminRouter.put("/products/:id", requireAdmin, asyncHandler(async (req, res) => {
   const body = req.body || {};
   try {
     const { rows } = await pool.query(
@@ -154,15 +157,15 @@ adminRouter.put("/products/:id", requireAdmin, async (req, res) => {
     if (error.code === "23505") return res.status(409).json({ error: "Slug уже зайнятий" });
     res.status(400).json({ error: "Не вдалося оновити товар" });
   }
-});
+}));
 
-adminRouter.delete("/products/:id", requireAdmin, async (req, res) => {
+adminRouter.delete("/products/:id", requireAdmin, asyncHandler(async (req, res) => {
   const { rowCount } = await pool.query("DELETE FROM products WHERE id = $1", [req.params.id]);
   if (!rowCount) return res.status(404).json({ error: "Товар не знайдено" });
   res.json({ ok: true });
-});
+}));
 
-adminRouter.get("/orders", requireAdmin, async (_req, res) => {
+adminRouter.get("/orders", requireAdmin, asyncHandler(async (_req, res) => {
   const { rows: orders } = await pool.query("SELECT * FROM orders ORDER BY id DESC");
   const { rows: items } = await pool.query("SELECT * FROM order_items ORDER BY id");
   const grouped = Object.fromEntries(orders.map((o) => [o.id, { ...o, items: [] }]));
@@ -170,9 +173,9 @@ adminRouter.get("/orders", requireAdmin, async (_req, res) => {
     grouped[item.order_id]?.items.push(item);
   }
   res.json(Object.values(grouped));
-});
+}));
 
-adminRouter.patch("/orders/:id", requireAdmin, async (req, res) => {
+adminRouter.patch("/orders/:id", requireAdmin, asyncHandler(async (req, res) => {
   const allowed = ["new", "processing", "shipped", "done", "cancelled"];
   const { status } = req.body || {};
   if (!allowed.includes(status)) {
@@ -184,4 +187,4 @@ adminRouter.patch("/orders/:id", requireAdmin, async (req, res) => {
   ]);
   if (!rows[0]) return res.status(404).json({ error: "Замовлення не знайдено" });
   res.json(rows[0]);
-});
+}));

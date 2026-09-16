@@ -311,7 +311,8 @@ const PRODUCTS = [
 ];
 
 export async function initDatabase() {
-  for (const statement of SCHEMA.split(";").map((s) => s.trim()).filter(Boolean)) {
+  const statements = SCHEMA.split(";").map((s) => s.trim()).filter(Boolean);
+  for (const statement of statements) {
     await pool.query(statement);
   }
 

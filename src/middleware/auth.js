@@ -7,7 +7,7 @@ export function requireAdmin(req, res, next) {
   }
 
   try {
-    req.admin = jwt.verify(token, process.env.JWT_SECRET);
+    req.admin = jwt.verify(token, process.env.JWT_SECRET || "icore-dev-secret-change-in-production");
     return next();
   } catch {
     return res.status(401).json({ error: "Сесію завершено" });
