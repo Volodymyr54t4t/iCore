@@ -193,6 +193,7 @@ async function renderOrders() {
             <select data-status="${o.id}">
               ${["new", "processing", "shipped", "done", "cancelled"].map((s) => `<option value="${s}" ${s === o.status ? "selected" : ""}>${statusLabel(s)}</option>`).join("")}
             </select>
+            <button class="btn danger" type="button" data-del-order="${o.id}" style="margin-top:8px">Видалити</button>
           </div>
         </div>
         <ul>${o.items.map((i) => `<li>${i.product_name} × ${i.quantity} — ${money(i.price * i.quantity)}</li>`).join("")}</ul>
@@ -205,6 +206,13 @@ async function renderOrders() {
     const sel = e.target.closest("[data-status]");
     if (!sel) return;
     await api("/api/admin/orders/" + sel.dataset.status, { method: "PATCH", body: { status: sel.value } });
+  };
+  app.onclick = async (e) => {
+    const del = e.target.closest("[data-del-order]");
+    if (!del) return;
+    if (!confirm(`Видалити замовлення №${del.dataset.delOrder}? Товари повернуться на склад.`)) return;
+    await api("/api/admin/orders/" + del.dataset.delOrder, { method: "DELETE" });
+    renderOrders();
   };
 }
 

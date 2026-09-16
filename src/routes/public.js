@@ -1,6 +1,9 @@
 import { Router } from "express";
 import { pool } from "../db/pool.js";
 import { asyncHandler } from "../utils/async.js";
+import { createOrder } from "../services/orders.js";
+import { notifyNewOrder } from "../telegram/bot.js";
+import { readCustomer } from "../middleware/auth.js";
 
 export const publicRouter = Router();
 
@@ -74,59 +77,22 @@ publicRouter.get("/products/:slug", asyncHandler(async (req, res) => {
 
 publicRouter.post("/orders", asyncHandler(async (req, res) => {
   const { name, phone, email, city, address, notes, items } = req.body || {};
+  const customer = readCustomer(req);
 
-  if (!name || !phone || !email || !city || !address || !Array.isArray(items) || !items.length) {
-    return res.status(400).json({ error: "Заповніть усі обовʼязкові поля та додайте товари" });
-  }
-
-  const client = await pool.connect();
   try {
-    await client.query("BEGIN");
-    let total = 0;
-    const lines = [];
-
-    for (const item of items) {
-      const qty = Number(item.quantity);
-      if (!item.id || !Number.isInteger(qty) || qty < 1) {
-        throw new Error("Некоректний склад замовлення");
-      }
-      const { rows } = await client.query("SELECT * FROM products WHERE id = $1 FOR UPDATE", [item.id]);
-      const product = rows[0];
-      if (!product) throw new Error("Один із товарів більше недоступний");
-      if (product.stock < qty) throw new Error(`Недостатньо на складі: ${product.name}`);
-      total += product.price * qty;
-      lines.push({ product, qty });
-    }
-
-    const orderResult = await client.query(
-      `INSERT INTO orders (customer_name, customer_phone, customer_email, city, address, notes, total)
-       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
-      [name.trim(), phone.trim(), email.trim(), city.trim(), address.trim(), (notes || "").trim(), total]
-    );
-    const order = orderResult.rows[0];
-
-    for (const line of lines) {
-      await client.query(
-        `INSERT INTO order_items (order_id, product_id, product_name, quantity, price)
-         VALUES ($1,$2,$3,$4,$5)`,
-        [order.id, line.product.id, line.product.name, line.qty, line.product.price]
-      );
-      await client.query("UPDATE products SET stock = stock - $1, updated_at = NOW() WHERE id = $2", [
-        line.qty,
-        line.product.id,
-      ]);
-    }
-
-    await client.query("COMMIT");
-    res.status(201).json({ id: order.id, total: order.total });
+    const order = await createOrder({
+      name,
+      phone,
+      email,
+      city,
+      address,
+      notes,
+      items,
+      customerId: customer?.id || null,
+    });
+    notifyNewOrder(order).catch((error) => console.error("Telegram notify:", error.message));
+    res.status(201).json({ id: order.id, total: order.total, account: Boolean(customer) });
   } catch (error) {
-    try {
-      await client.query("ROLLBACK");
-    } catch {
-      /* ignore rollback errors */
-    }
     res.status(400).json({ error: error.message || "Не вдалося оформити замовлення" });
-  } finally {
-    client.release();
   }
 }));

@@ -188,3 +188,40 @@ adminRouter.patch("/orders/:id", requireAdmin, asyncHandler(async (req, res) => 
   if (!rows[0]) return res.status(404).json({ error: "Замовлення не знайдено" });
   res.json(rows[0]);
 }));
+
+adminRouter.delete("/orders/:id", requireAdmin, asyncHandler(async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const { rows } = await client.query("SELECT * FROM orders WHERE id = $1 FOR UPDATE", [req.params.id]);
+    if (!rows[0]) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ error: "Замовлення не знайдено" });
+    }
+
+    const { rows: items } = await client.query(
+      "SELECT product_id, quantity FROM order_items WHERE order_id = $1",
+      [req.params.id]
+    );
+    for (const item of items) {
+      if (!item.product_id) continue;
+      await client.query(
+        "UPDATE products SET stock = stock + $1, updated_at = NOW() WHERE id = $2",
+        [item.quantity, item.product_id]
+      );
+    }
+
+    await client.query("DELETE FROM orders WHERE id = $1", [req.params.id]);
+    await client.query("COMMIT");
+    res.json({ ok: true });
+  } catch (error) {
+    try {
+      await client.query("ROLLBACK");
+    } catch {
+      /* ignore */
+    }
+    res.status(400).json({ error: error.message || "Не вдалося видалити замовлення" });
+  } finally {
+    client.release();
+  }
+}));

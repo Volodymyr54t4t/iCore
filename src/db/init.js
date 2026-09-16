@@ -56,7 +56,46 @@ CREATE TABLE IF NOT EXISTS order_items (
   quantity INTEGER NOT NULL,
   price INTEGER NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS telegram_users (
+  chat_id BIGINT PRIMARY KEY,
+  username TEXT,
+  first_name TEXT NOT NULL DEFAULT '',
+  last_name TEXT NOT NULL DEFAULT '',
+  is_owner BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS telegram_cart (
+  chat_id BIGINT NOT NULL,
+  product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  quantity INTEGER NOT NULL DEFAULT 1,
+  PRIMARY KEY (chat_id, product_id)
+);
+
+CREATE TABLE IF NOT EXISTS customers (
+  id SERIAL PRIMARY KEY,
+  email TEXT UNIQUE NOT NULL,
+  password_hash TEXT NOT NULL,
+  name TEXT NOT NULL,
+  phone TEXT NOT NULL DEFAULT '',
+  city TEXT NOT NULL DEFAULT '',
+  address TEXT NOT NULL DEFAULT '',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 `;
+
+async function ensureColumn(table, column, definition) {
+  const { rows } = await pool.query(
+    `SELECT 1 FROM information_schema.columns WHERE table_name = $1 AND column_name = $2`,
+    [table, column]
+  );
+  if (!rows.length) {
+    await pool.query(`ALTER TABLE ${table} ADD COLUMN ${definition}`);
+  }
+}
 
 const CATEGORIES = [
   { slug: "iphone", name: "iPhone", sort_order: 1 },
@@ -315,6 +354,14 @@ export async function initDatabase() {
   for (const statement of statements) {
     await pool.query(statement);
   }
+
+  await ensureColumn("orders", "telegram_chat_id", "telegram_chat_id BIGINT");
+  await ensureColumn("products", "telegram_file_id", "telegram_file_id TEXT NOT NULL DEFAULT ''");
+  await ensureColumn(
+    "orders",
+    "customer_id",
+    "customer_id INTEGER REFERENCES customers(id) ON DELETE SET NULL"
+  );
 
   const email = process.env.ADMIN_EMAIL || "admin@icore.store";
   const password = process.env.ADMIN_PASSWORD || "Admin123!";

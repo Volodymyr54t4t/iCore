@@ -1,7 +1,6 @@
-import { api, formatPrice, addToCart, nav, updateCartBadge, toast } from "./api.js";
+import { api, formatPrice, addToCart, mountNav, toast } from "./api.js";
 
-document.getElementById("nav").innerHTML = nav();
-updateCartBadge();
+await mountNav();
 
 const slug = new URLSearchParams(location.search).get("slug");
 const page = document.getElementById("page");

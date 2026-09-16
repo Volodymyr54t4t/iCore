@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="uk">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Реєстрація — iCore Store</title>
+    <link rel="stylesheet" href="/css/style.css" />
+  </head>
+  <body class="auth-page" data-auth="register">
+    <div id="nav"></div>
+    <main class="auth-shell">
+      <section class="auth-visual">
+        <p class="auth-kicker">iCore Store</p>
+        <h1>Створіть кабінет за хвилину.</h1>
+        <p>Після реєстрації всі замовлення з цим email зберуться в одному місці.</p>
+        <ul class="auth-points">
+          <li>Безкоштовна реєстрація</li>
+          <li>Доставка по Україні</li>
+          <li>Підтримка в Telegram і на сайті</li>
+        </ul>
+      </section>
+      <section class="auth-panel">
+        <div class="auth-card">
+          <div class="segmented" role="tablist">
+            <a class="segmented-btn" href="/login.html" data-tab="login">Вхід</a>
+            <a class="segmented-btn active" href="/register.html" data-tab="register">Реєстрація</a>
+          </div>
+          <h2 id="auth-title">Новий клієнт</h2>
+          <p class="muted" id="auth-lead">Заповніть дані один раз — далі оформлення буде швидшим.</p>
+          <form class="auth-form" id="login-form" hidden>
+            <label class="field">
+              <span>Email</span>
+              <input name="email" type="email" required autocomplete="email" placeholder="you@email.com" />
+            </label>
+            <label class="field">
+              <span>Пароль</span>
+              <input name="password" type="password" required minlength="6" autocomplete="current-password" placeholder="Мінімум 6 символів" />
+            </label>
+            <button class="btn full" type="submit">Увійти до кабінету</button>
+            <div class="error" id="login-error"></div>
+          </form>
+          <form class="auth-form" id="register-form">
+            <div class="field-grid">
+              <label class="field">
+                <span>Імʼя та прізвище</span>
+                <input name="name" required autocomplete="name" placeholder="Анна Коваль" />
+              </label>
+              <label class="field">
+                <span>Телефон</span>
+                <input name="phone" autocomplete="tel" placeholder="+380 67 000 00 00" />
+              </label>
+            </div>
+            <label class="field">
+              <span>Email</span>
+              <input name="email" type="email" required autocomplete="email" placeholder="you@email.com" />
+            </label>
+            <div class="field-grid">
+              <label class="field">
+                <span>Місто</span>
+                <input name="city" autocomplete="address-level2" placeholder="Київ" />
+              </label>
+              <label class="field">
+                <span>Відділення / адреса</span>
+                <input name="address" autocomplete="street-address" placeholder="НП №12 або вулиця" />
+              </label>
+            </div>
+            <label class="field">
+              <span>Пароль</span>
+              <input name="password" type="password" required minlength="6" autocomplete="new-password" placeholder="Мінімум 6 символів" />
+            </label>
+            <button class="btn full" type="submit">Створити кабінет</button>
+            <div class="error" id="register-error"></div>
+          </form>
+        </div>
+      </section>
+    </main>
+    <script type="module" src="/js/login.js"></script>
+  </body>
+</html>

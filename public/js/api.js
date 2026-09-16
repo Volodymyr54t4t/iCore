@@ -72,7 +72,20 @@ export function toast(message) {
   }, 2200);
 }
 
-export function nav(active = "") {
+export async function getCustomer() {
+  try {
+    const res = await fetch("/api/account/me", { credentials: "include" });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+export function nav(me = null) {
+  const account = me
+    ? `<a class="account-link" href="/account.html">Кабінет</a>`
+    : `<a class="account-link" href="/login.html">Увійти</a>`;
   return `
     <header class="nav">
       <div class="nav-inner">
@@ -82,11 +95,20 @@ export function nav(active = "") {
           <a href="/#iphone">iPhone</a>
           <a href="/#mac">Mac</a>
           <a href="/#watch">Watch</a>
-          <a href="/admin/login.html">Адмін</a>
         </nav>
         <div class="nav-spacer"></div>
+        ${account}
         <a class="cart-link" href="/cart.html">Кошик <b class="badge" data-cart-count hidden>0</b></a>
       </div>
     </header>
   `;
+}
+
+export async function mountNav() {
+  const host = document.getElementById("nav");
+  if (!host) return null;
+  const me = await getCustomer();
+  host.innerHTML = nav(me);
+  updateCartBadge();
+  return me;
 }

@@ -1,7 +1,6 @@
-import { formatPrice, getCart, saveCart, nav, updateCartBadge } from "./api.js";
+import { formatPrice, getCart, saveCart, mountNav } from "./api.js";
 
-document.getElementById("nav").innerHTML = nav();
-updateCartBadge();
+await mountNav();
 
 function render() {
   const cart = getCart();

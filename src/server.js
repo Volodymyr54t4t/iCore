@@ -9,6 +9,8 @@ import { pool, createPool } from "./db/pool.js";
 import { initDatabase } from "./db/init.js";
 import { publicRouter } from "./routes/public.js";
 import { adminRouter } from "./routes/admin.js";
+import { accountRouter } from "./routes/account.js";
+import { startTelegramBot } from "./telegram/bot.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -19,6 +21,7 @@ app.use(express.static(path.join(__dirname, "../public")));
 
 app.use("/api", publicRouter);
 app.use("/api/admin", adminRouter);
+app.use("/api/account", accountRouter);
 
 app.get("/admin", (_req, res) => {
   res.sendFile(path.join(__dirname, "../public/admin/index.html"));
@@ -78,6 +81,9 @@ async function start() {
     console.log(`  Пароль:   ${process.env.ADMIN_PASSWORD || "Admin123!"}`);
     console.log("");
     openBrowser(shopUrl);
+    startTelegramBot().catch((error) => {
+      console.error("Не вдалося запустити Telegram-бота:", error.message);
+    });
   });
 }
 
