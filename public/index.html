@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="uk">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>iCore Store — техніка Apple</title>
+    <link rel="stylesheet" href="/css/style.css" />
+  </head>
+  <body>
+    <div id="nav"></div>
+    <section class="hero">
+      <h1>iPhone 16 Pro</h1>
+      <p>Титан. Камера. Чип A18 Pro.</p>
+      <a class="btn" href="/product.html?slug=iphone-16-pro">Купити</a>
+      <div class="hero-art">
+        <img src="https://images.unsplash.com/photo-1695048133142-1a20484d2569?auto=format&fit=crop&w=1600&q=80" alt="iPhone 16 Pro" />
+      </div>
+    </section>
+    <main class="wrap" id="catalog">
+      <h2 class="section-title">Каталог Apple</h2>
+      <p class="muted">Офіційні моделі з гарантією 12 місяців. Доставка по Україні.</p>
+      <div class="filters">
+        <button class="chip active" data-category="">Усе</button>
+        <div id="category-chips"></div>
+        <input class="search" id="search" placeholder="Пошук: iPhone, Mac, Watch..." />
+        <select class="select" id="sort">
+          <option value="">Спочатку рекомендовані</option>
+          <option value="price_asc">Ціна: зростання</option>
+          <option value="price_desc">Ціна: спадання</option>
+          <option value="name">Назва</option>
+        </select>
+      </div>
+      <div class="grid" id="products"></div>
+    </main>
+    <footer class="footer">iCore Store · не є офіційним магазином Apple · демо-проєкт</footer>
+    <script type="module" src="/js/shop.js"></script>
+  </body>
+</html>

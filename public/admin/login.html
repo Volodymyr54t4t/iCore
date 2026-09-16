@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="uk">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Вхід — iCore Admin</title>
+    <link rel="stylesheet" href="/admin/admin.css" />
+  </head>
+  <body>
+    <div class="login-wrap">
+      <form class="login" id="login">
+        <h2>iCore Admin</h2>
+        <p style="color:#a1a1aa;margin:0">Керування каталогом і замовленнями</p>
+        <input name="email" type="email" required placeholder="Email" value="admin@icore.store" />
+        <input name="password" type="password" required placeholder="Пароль" />
+        <button class="btn">Увійти</button>
+        <div class="error" id="error"></div>
+        <a href="/" style="color:#a1a1aa;font-size:13px">← На вітрину</a>
+      </form>
+    </div>
+    <script type="module">
+      document.getElementById("login").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const fd = new FormData(e.target);
+        const res = await fetch("/api/admin/login", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: fd.get("email"), password: fd.get("password") }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          document.getElementById("error").textContent = data.error;
+          return;
+        }
+        location.href = "/admin/";
+      });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,16 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: icore-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: icore
+      POSTGRES_PASSWORD: icore
+      POSTGRES_DB: icore
+    ports:
+      - "5432:5432"
+    volumes:
+      - icore_pg:/var/lib/postgresql/data
+
+volumes:
+  icore_pg:

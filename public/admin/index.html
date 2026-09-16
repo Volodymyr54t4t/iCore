@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="uk">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Адмін-панель — iCore</title>
+    <link rel="stylesheet" href="/admin/admin.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="side">
+        <h1> iCore Admin</h1>
+        <a href="#dashboard" class="active" data-view="dashboard">Огляд</a>
+        <a href="#products" data-view="products">Товари</a>
+        <a href="#orders" data-view="orders">Замовлення</a>
+        <a href="/" target="_blank">Відкрити магазин</a>
+        <button class="link" id="logout">Вийти</button>
+        <p id="who" style="color:#a1a1aa;font-size:12px;margin-top:24px"></p>
+      </aside>
+      <main class="main" id="app"></main>
+    </div>
+    <div class="modal" id="modal"></div>
+    <script type="module" src="/admin/admin.js"></script>
+  </body>
+</html>
