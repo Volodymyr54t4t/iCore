@@ -60,7 +60,8 @@ async function resolvePort(preferred) {
 function openBrowser(url) {
   if (process.env.OPEN_BROWSER === "0") return;
   const cmd = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
-  spawn(cmd, [url], { stdio: "ignore", detached: true, shell: process.platform === "win32" }).unref();
+  const browser = spawn(cmd, [url], { stdio: "ignore", detached: true, shell: process.platform === "win32" });
+  browser.on("error", () => {});
 }
 
 async function start() {

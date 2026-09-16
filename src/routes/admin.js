@@ -225,3 +225,91 @@ adminRouter.delete("/orders/:id", requireAdmin, asyncHandler(async (req, res) =>
     client.release();
   }
 }));
+
+const DB_TABLES = {
+  admins: { label: "Адміністратори", pk: "id", columns: ["id", "email", "name", "created_at"], editable: ["email", "name"] },
+  categories: { label: "Категорії", pk: "id", columns: ["id", "slug", "name", "sort_order"], editable: ["slug", "name", "sort_order"] },
+  products: { label: "Товари", pk: "id", columns: ["id", "category_id", "slug", "name", "tagline", "description", "price", "old_price", "color", "storage", "stock", "image_url", "featured", "telegram_file_id", "created_at", "updated_at"], editable: ["category_id", "slug", "name", "tagline", "description", "price", "old_price", "color", "storage", "stock", "image_url", "featured", "telegram_file_id"] },
+  orders: { label: "Замовлення", pk: "id", columns: ["id", "customer_name", "customer_phone", "customer_email", "city", "address", "notes", "status", "total", "telegram_chat_id", "customer_id", "created_at"], editable: ["customer_name", "customer_phone", "customer_email", "city", "address", "notes", "status", "telegram_chat_id", "customer_id"] },
+  order_items: { label: "Позиції замовлень", pk: "id", columns: ["id", "order_id", "product_id", "product_name", "quantity", "price"], editable: ["order_id", "product_id", "product_name", "quantity", "price"] },
+  telegram_users: { label: "Telegram користувачі", pk: "chat_id", columns: ["chat_id", "username", "first_name", "last_name", "is_owner", "created_at", "last_seen_at"], editable: ["username", "first_name", "last_name", "is_owner"] },
+  telegram_cart: { label: "Кошики Telegram", pk: "chat_id", compositePk: ["chat_id", "product_id"], columns: ["chat_id", "product_id", "quantity"], editable: ["quantity"] },
+  customers: { label: "Клієнти", pk: "id", columns: ["id", "email", "name", "phone", "city", "address", "created_at", "updated_at"], editable: ["email", "name", "phone", "city", "address"] },
+};
+const DB_FK = { category_id: ["categories", "id"], order_id: ["orders", "id"], product_id: ["products", "id"], customer_id: ["customers", "id"] };
+const DB_TYPES = { id: "integer", category_id: "integer", order_id: "integer", product_id: "integer", customer_id: "integer", chat_id: "bigint", quantity: "integer", price: "integer", old_price: "integer", stock: "integer", sort_order: "integer", total: "integer", telegram_chat_id: "bigint", featured: "boolean", is_owner: "boolean", created_at: "date", updated_at: "date", last_seen_at: "date" };
+function tableConfig(name) { return DB_TABLES[name]; }
+function quoteIdentifier(value) { return `"${value.replaceAll('"', '""')}"`; }
+function normalizeValue(column, value) {
+  if (value === undefined || value === "") return null;
+  if (DB_TYPES[column] === "boolean") return value === true || value === "true";
+  if (["integer", "bigint"].includes(DB_TYPES[column])) return Number(value);
+  return value;
+}
+function dbError(error) {
+  if (error.code === "23505") return "Таке значення вже існує";
+  if (error.code === "23503") return "Запис має пов’язані дані або посилається на неіснуючий запис";
+  if (error.code === "23502") return "Заповніть усі обов’язкові поля";
+  return "Операція з базою даних не виконана";
+}
+
+adminRouter.get("/db/meta", requireAdmin, asyncHandler(async (_req, res) => {
+  const tables = Object.entries(DB_TABLES).map(([name, config]) => ({ name, ...config, columns: config.columns.map((column) => ({ name: column, type: DB_TYPES[column] || "text", nullable: !config.editable.includes(column) || column !== config.pk, foreignKey: DB_FK[column] || null, sensitive: column === "password_hash" })) }));
+  res.json({ tables });
+}));
+
+adminRouter.get("/db/:table", requireAdmin, asyncHandler(async (req, res) => {
+  const config = tableConfig(req.params.table);
+  if (!config) return res.status(404).json({ error: "Таблицю не дозволено редагувати" });
+  const page = Math.max(1, Number(req.query.page) || 1);
+  const limit = Math.min(100, Math.max(5, Number(req.query.limit) || 20));
+  const search = String(req.query.search || "").trim();
+  const sort = config.columns.includes(req.query.sort) ? req.query.sort : config.pk;
+  const direction = req.query.direction === "asc" ? "ASC" : "DESC";
+  const values = [];
+  const where = [];
+  if (search) {
+    const textColumns = config.columns.filter((column) => !["id", "chat_id", "product_id", "order_id", "customer_id", "quantity", "price", "stock", "sort_order", "total"].includes(column));
+    if (textColumns.length) { values.push(`%${search}%`); where.push(`(${textColumns.map((column) => `CAST(${quoteIdentifier(column)} AS TEXT) ILIKE $${values.length}`).join(" OR ")})`); }
+  }
+  const prefix = where.length ? ` WHERE ${where.join(" AND ")}` : "";
+  const offset = (page - 1) * limit;
+  const [{ rows }, { rows: countRows }] = await Promise.all([
+    pool.query(`SELECT ${config.columns.map(quoteIdentifier).join(", ")} FROM ${quoteIdentifier(req.params.table)}${prefix} ORDER BY ${quoteIdentifier(sort)} ${direction} LIMIT $${values.length + 1} OFFSET $${values.length + 2}`, [...values, limit, offset]),
+    pool.query(`SELECT COUNT(*)::int AS count FROM ${quoteIdentifier(req.params.table)}${prefix}`, values),
+  ]);
+  res.json({ rows, total: countRows[0].count, page, limit, sort, direction });
+}));
+
+async function dbWrite(req, res, method) {
+  const config = tableConfig(req.params.table);
+  if (!config) return res.status(404).json({ error: "Таблицю не дозволено редагувати" });
+  const body = req.body || {};
+  const fields = config.editable.filter((column) => Object.prototype.hasOwnProperty.call(body, column));
+  if (!fields.length) return res.status(400).json({ error: "Немає дозволених полів для зміни" });
+  try {
+    let result;
+    if (method === "insert") {
+      const values = fields.map((field) => normalizeValue(field, body[field]));
+      result = await pool.query(`INSERT INTO ${quoteIdentifier(req.params.table)} (${fields.map(quoteIdentifier).join(", ")}) VALUES (${values.map((_, i) => `$${i + 1}`).join(", ")}) RETURNING *`, values);
+    } else {
+      const id = req.params.id;
+      const values = fields.map((field) => normalizeValue(field, body[field]));
+      values.push(id);
+      result = await pool.query(`UPDATE ${quoteIdentifier(req.params.table)} SET ${fields.map((field, i) => `${quoteIdentifier(field)} = $${i + 1}`).join(", ")} WHERE ${quoteIdentifier(config.pk)} = $${values.length} RETURNING *`, values);
+      if (!result.rows[0]) return res.status(404).json({ error: "Запис не знайдено" });
+    }
+    res.status(method === "insert" ? 201 : 200).json(result.rows[0]);
+  } catch (error) { res.status(400).json({ error: dbError(error) }); }
+}
+adminRouter.post("/db/:table", requireAdmin, asyncHandler((req, res) => dbWrite(req, res, "insert")));
+adminRouter.patch("/db/:table/:id", requireAdmin, asyncHandler((req, res) => dbWrite(req, res, "update")));
+adminRouter.delete("/db/:table/:id", requireAdmin, asyncHandler(async (req, res) => {
+  const config = tableConfig(req.params.table);
+  if (!config || req.params.table === "admins") return res.status(400).json({ error: "Цю таблицю не можна видаляти через браузер" });
+  try {
+    const result = await pool.query(`DELETE FROM ${quoteIdentifier(req.params.table)} WHERE ${quoteIdentifier(config.pk)} = $1 RETURNING ${quoteIdentifier(config.pk)}`, [req.params.id]);
+    if (!result.rowCount) return res.status(404).json({ error: "Запис не знайдено" });
+    res.json({ ok: true });
+  } catch (error) { res.status(400).json({ error: dbError(error) }); }
+}));

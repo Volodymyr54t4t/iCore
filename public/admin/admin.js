@@ -216,8 +216,55 @@ async function renderOrders() {
   };
 }
 
+const escapeHtml = (value) => String(value ?? "").replace(/[&<>\"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '\"': "&quot;", "'": "&#039;" }[char]));
+const displayValue = (value, type) => {
+  if (value === null || value === undefined) return '<span class="small">NULL</span>';
+  if (type === "boolean") return value ? '<span class="badge">Так</span>' : '<span class="badge">Ні</span>';
+  if (type === "date") return new Date(value).toLocaleString("uk-UA");
+  return escapeHtml(value);
+};
+
+async function renderDatabase() {
+  const meta = await api("/api/admin/db/meta");
+  let tableName = new URLSearchParams(location.hash.split("?")[1] || "").get("table") || meta.tables[0]?.name;
+  let page = 1;
+  let search = "";
+  let sort = meta.tables.find((table) => table.name === tableName)?.pk || "id";
+  let direction = "desc";
+  let currentRows = [];
+  const draw = async () => {
+    const table = meta.tables.find((item) => item.name === tableName) || meta.tables[0];
+    tableName = table.name;
+    sort = table.columns.some((column) => column.name === sort) ? sort : table.pk;
+    const data = await api(`/api/admin/db/${table.name}?page=${page}&limit=20&search=${encodeURIComponent(search)}&sort=${sort}&direction=${direction}`);
+    currentRows = data.rows;
+    const pages = Math.max(1, Math.ceil(data.total / data.limit));
+    app.innerHTML = `<div class="page-heading"><div><h2>База даних</h2><p class="small">Безпечний CRUD: системні поля доступні лише для перегляду.</p></div><button class="btn" id="db-add">Додати запис</button></div>
+      <div class="toolbar"><select id="db-table">${meta.tables.map((item) => `<option value="${item.name}" ${item.name === table.name ? "selected" : ""}>${item.label}</option>`).join("")}</select><input id="db-search" placeholder="Пошук у таблиці" value="${escapeHtml(search)}" /><span class="small">Записів: ${data.total}</span></div>
+      <div class="table-wrap"><table class="db-table"><thead><tr>${table.columns.map((column) => `<th><button data-sort="${column.name}">${escapeHtml(column.name)} ${sort === column.name ? (direction === "asc" ? "↑" : "↓") : ""}</button></th>`).join("")}<th>Дії</th></tr></thead><tbody>${currentRows.map((row, index) => `<tr>${table.columns.map((column) => `<td title="${escapeHtml(row[column.name])}">${displayValue(row[column.name], column.type)}</td>`).join("")}<td><button class="btn ghost" data-db-edit="${index}">Редагувати</button>${table.name !== "admins" ? ` <button class="btn danger" data-db-delete="${index}">Видалити</button>` : ""}</td></tr>`).join("") || `<tr><td colspan="${table.columns.length + 1}">Записів не знайдено</td></tr>`}</tbody></table></div>
+      <div class="pagination"><button class="btn ghost" id="db-prev" ${page <= 1 ? "disabled" : ""}>Назад</button><span class="small">Сторінка ${page} з ${pages}</span><button class="btn ghost" id="db-next" ${page >= pages ? "disabled" : ""}>Далі</button></div>`;
+    document.getElementById("db-table").onchange = (event) => { tableName = event.target.value; page = 1; sort = meta.tables.find((item) => item.name === tableName).pk; draw(); };
+    let searchTimer;
+    document.getElementById("db-search").oninput = (event) => { clearTimeout(searchTimer); searchTimer = setTimeout(() => { search = event.target.value; page = 1; draw(); }, 250); };
+    document.getElementById("db-prev").onclick = () => { page -= 1; draw(); };
+    document.getElementById("db-next").onclick = () => { page += 1; draw(); };
+    app.querySelectorAll("[data-sort]").forEach((button) => { button.onclick = () => { direction = sort === button.dataset.sort && direction === "desc" ? "asc" : "desc"; sort = button.dataset.sort; draw(); }; });
+    document.getElementById("db-add").onclick = () => openDatabaseForm(table, null, draw);
+    app.querySelectorAll("[data-db-edit]").forEach((button) => { button.onclick = () => openDatabaseForm(table, currentRows[button.dataset.dbEdit], draw); });
+    app.querySelectorAll("[data-db-delete]").forEach((button) => { button.onclick = async () => { const row = currentRows[button.dataset.dbDelete]; if (!confirm(`Видалити запис ${row[table.pk]}? Цю дію не можна скасувати.`)) return; try { await api(`/api/admin/db/${table.name}/${encodeURIComponent(row[table.pk])}`, { method: "DELETE" }); await draw(); } catch (error) { alert(error.message); } }; });
+  };
+  await draw();
+}
+
+function openDatabaseForm(table, row, refresh) {
+  const editable = table.columns.filter((column) => table.editable.includes(column.name));
+  openModal(`<h3>${row ? "Редагування" : "Новий запис"}: ${escapeHtml(table.label)}</h3><form id="db-form"><div class="form-grid">${editable.map((column) => { const value = row?.[column.name] ?? ""; if (column.type === "boolean") return `<label><input name="${column.name}" type="checkbox" ${value ? "checked" : ""} /> ${escapeHtml(column.name)}</label>`; return `<label>${escapeHtml(column.name)}<input name="${column.name}" type="${column.type === "integer" || column.type === "bigint" ? "number" : "text"}" value="${escapeHtml(value)}" ${column.nullable ? "" : "required"} /></label>`; }).join("")}</div><div class="form-actions"><button class="btn">${row ? "Зберегти" : "Створити"}</button><button type="button" class="btn ghost" data-close>Скасувати</button></div><div class="error" id="db-error"></div></form>`);
+  document.getElementById("db-form").onsubmit = async (event) => { event.preventDefault(); const form = event.target; const body = {}; editable.forEach((column) => { const control = form.elements[column.name]; body[column.name] = column.type === "boolean" ? control.checked : control.value; }); try { await api(row ? `/api/admin/db/${table.name}/${encodeURIComponent(row[table.pk])}` : `/api/admin/db/${table.name}`, { method: row ? "PATCH" : "POST", body }); modal.classList.remove("open"); await refresh(); } catch (error) { document.getElementById("db-error").textContent = error.message; } };
+}
+
 async function render() {
   document.querySelectorAll("[data-view]").forEach((a) => a.classList.toggle("active", a.dataset.view === view));
+  if (view === "database") return renderDatabase();
   if (view === "products") return renderProducts();
   if (view === "orders") return renderOrders();
   return renderDashboard();

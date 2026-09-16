@@ -92,7 +92,17 @@ th, td { padding: 12px; border-bottom: 1px solid var(--line); text-align: left; 
 }
 .status { padding: 4px 8px; border-radius: 999px; font-size: 12px; background: #23232c; }
 .error { color: var(--danger); min-height: 20px; }
+.toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 16px 0; }
+.toolbar input, .toolbar select { min-width: 170px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: #101014; color: var(--ink); }
+.table-wrap { overflow-x: auto; border-radius: 16px; }
+.db-table { min-width: 760px; }
+.db-table td { max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.db-table th button { background: none; color: inherit; border: 0; cursor: pointer; font: inherit; padding: 0; }
+.badge { display: inline-block; padding: 3px 7px; border-radius: 999px; background: #23232c; color: var(--muted); font-size: 11px; }
+.pagination { display: flex; align-items: center; gap: 10px; justify-content: flex-end; margin-top: 14px; }
+.small { color: var(--muted); font-size: 13px; }
 @media (max-width: 900px) {
   .shell { grid-template-columns: 1fr; }
   .cards, .form-grid { grid-template-columns: 1fr; }
+  .main { padding: 18px 12px; }
 }
