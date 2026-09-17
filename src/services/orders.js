@@ -1,4 +1,5 @@
 import { pool } from "../db/pool.js";
+import { logActivity } from "./activity.js";
 
 export async function createOrder({
   name,
@@ -72,6 +73,17 @@ export async function createOrder({
         line.product.id,
       ]);
     }
+
+    await logActivity({
+      actorType: customerId ? "customer" : telegramChatId ? "telegram" : "guest",
+      actorId: customerId,
+      actorName: name.trim(),
+      action: "Створив замовлення",
+      entityType: "order",
+      entityId: order.id,
+      details: { total, items: lines.length },
+      db: client,
+    });
 
     await client.query("COMMIT");
     return { ...order, items: lines.map((l) => ({ name: l.product.name, qty: l.qty, price: l.product.price })) };

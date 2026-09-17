@@ -4,6 +4,8 @@ import cookieParser from "cookie-parser";
 import net from "node:net";
 import path from "node:path";
 import { spawn } from "node:child_process";
+import { mkdir, writeFile } from "node:fs/promises";
+import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { pool, createPool } from "./db/pool.js";
 import { initDatabase } from "./db/init.js";
@@ -15,13 +17,37 @@ import { startTelegramBot } from "./telegram/bot.js";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 
-app.use(express.json({ limit: "1mb" }));
+app.use(express.json({ limit: "8mb" }));
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, "../public")));
 
 app.use("/api", publicRouter);
 app.use("/api/admin", adminRouter);
 app.use("/api/account", accountRouter);
+
+// Local product media is intentionally kept inside the public directory so its URL
+// can be stored in the existing image_url column without another media service.
+app.post("/api/admin/upload", async (req, res) => {
+  const token = req.cookies?.token;
+  if (!token) return res.status(401).json({ error: "Потрібна авторизація" });
+  try {
+    const jwt = await import("jsonwebtoken");
+    jwt.default.verify(token, process.env.JWT_SECRET || "icore-dev-secret-change-in-production");
+    const dataUrl = String(req.body?.dataUrl || "");
+    const match = dataUrl.match(/^data:image\/(png|jpe?g|webp);base64,([a-zA-Z0-9+/=]+)$/);
+    if (!match) return res.status(400).json({ error: "Оберіть зображення PNG, JPG або WebP" });
+    const data = Buffer.from(match[2], "base64");
+    if (!data.length || data.length > 5 * 1024 * 1024) return res.status(400).json({ error: "Розмір фото має бути до 5 МБ" });
+    const ext = match[1] === "jpeg" ? "jpg" : match[1];
+    const name = `${Date.now()}-${crypto.randomBytes(6).toString("hex")}.${ext}`;
+    const dir = path.join(__dirname, "../public/uploads");
+    await mkdir(dir, { recursive: true });
+    await writeFile(path.join(dir, name), data, { flag: "wx" });
+    res.status(201).json({ url: `/uploads/${name}` });
+  } catch {
+    res.status(401).json({ error: "Сесію завершено" });
+  }
+});
 
 app.get("/admin", (_req, res) => {
   res.sendFile(path.join(__dirname, "../public/admin/index.html"));

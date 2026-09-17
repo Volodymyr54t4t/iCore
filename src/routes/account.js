@@ -4,6 +4,7 @@ import jwt from "jsonwebtoken";
 import { pool } from "../db/pool.js";
 import { cookieOptions, jwtSecret, requireCustomer } from "../middleware/auth.js";
 import { asyncHandler } from "../utils/async.js";
+import { logActivity } from "../services/activity.js";
 
 export const accountRouter = Router();
 
@@ -97,6 +98,7 @@ accountRouter.post("/register", asyncHandler(async (req, res) => {
     );
     const customer = rows[0];
     await attachPastOrders(customer.id, customer.email);
+    await logActivity({ actorType: "customer", actorId: customer.id, actorName: customer.name, action: "Зареєструвався", entityType: "customer", entityId: customer.id });
     setCustomerCookie(res, customer);
     res.status(201).json(publicCustomer(customer));
   } catch (error) {
@@ -122,6 +124,7 @@ accountRouter.post("/login", asyncHandler(async (req, res) => {
   }
 
   await attachPastOrders(customer.id, customer.email);
+  await logActivity({ actorType: "customer", actorId: customer.id, actorName: customer.name, action: "Увійшов у кабінет", entityType: "customer", entityId: customer.id });
   setCustomerCookie(res, customer);
   res.json(publicCustomer(customer));
 }));
@@ -149,6 +152,7 @@ accountRouter.patch("/me", requireCustomer, asyncHandler(async (req, res) => {
     [(name || "").trim(), (phone || "").trim(), (city || "").trim(), (address || "").trim(), req.customer.id]
   );
   setCustomerCookie(res, rows[0]);
+  await logActivity({ actorType: "customer", actorId: req.customer.id, actorName: rows[0].name, action: "Оновив профіль", entityType: "customer", entityId: req.customer.id });
   res.json(publicCustomer(rows[0]));
 }));
 
@@ -172,6 +176,7 @@ accountRouter.patch("/password", requireCustomer, asyncHandler(async (req, res) 
     hash,
     customer.id,
   ]);
+  await logActivity({ actorType: "customer", actorId: req.customer.id, actorName: customer.name, action: "Змінив пароль", entityType: "customer", entityId: req.customer.id });
   res.json({ ok: true });
 }));
 
@@ -209,6 +214,7 @@ accountRouter.patch("/orders/:id/cancel", requireCustomer, asyncHandler(async (r
       ]);
     }
     await client.query("UPDATE orders SET status = 'cancelled' WHERE id = $1", [order.id]);
+    await logActivity({ actorType: "customer", actorId: req.customer.id, actorName: req.customer.name || order.customer_name, action: "Скасував замовлення", entityType: "order", entityId: order.id, db: client });
     await client.query("COMMIT");
     res.json({ ok: true });
   } catch (error) {

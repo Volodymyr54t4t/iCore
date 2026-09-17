@@ -85,6 +85,21 @@ CREATE TABLE IF NOT EXISTS customers (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+CREATE TABLE IF NOT EXISTS activity_log (
+  id SERIAL PRIMARY KEY,
+  actor_type TEXT NOT NULL,
+  actor_id INTEGER,
+  actor_name TEXT NOT NULL DEFAULT '',
+  action TEXT NOT NULL,
+  entity_type TEXT NOT NULL,
+  entity_id INTEGER,
+  details JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS activity_log_created_at_idx ON activity_log (created_at DESC);
+CREATE INDEX IF NOT EXISTS activity_log_actor_idx ON activity_log (actor_type, actor_id);
 `;
 
 async function ensureColumn(table, column, definition) {

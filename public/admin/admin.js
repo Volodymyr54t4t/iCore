@@ -1,226 +1,66 @@
-const money = (n) => new Intl.NumberFormat("uk-UA").format(n) + " ₴";
+const money = (n) => new Intl.NumberFormat("uk-UA").format(Number(n || 0)) + " ₴";
+const date = (value) => value ? new Intl.DateTimeFormat("uk-UA", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value)) : "—";
+const esc = (v = "") => String(v).replace(/[&<>'"]/g, (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", "'":"&#39;", '"':"&quot;" }[c]));
+const statuses = { new: "Нове", processing: "В обробці", shipped: "Відправлено", done: "Виконано", cancelled: "Скасовано" };
 
 async function api(path, options = {}) {
-  const res = await fetch(path, {
-    credentials: "include",
-    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
-    ...options,
-    body: options.body ? JSON.stringify(options.body) : undefined,
-  });
-  if (res.status === 401) {
-    location.href = "/admin/login.html";
-    throw new Error("auth");
-  }
+  const res = await fetch(path, { credentials: "include", headers: { "Content-Type": "application/json", ...(options.headers || {}) }, ...options, body: options.body ? JSON.stringify(options.body) : undefined });
+  if (res.status === 401) { location.href = "/admin/login.html"; throw new Error("auth"); }
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || "Помилка");
+  if (!res.ok) throw new Error(data.error || "Помилка запиту");
   return data;
 }
 
 const app = document.getElementById("app");
 const modal = document.getElementById("modal");
+const toastEl = document.getElementById("toast");
 let categories = [];
-let view = location.hash.replace("#", "") || "dashboard";
+let view = location.hash.slice(1) || "dashboard";
+let timer;
+const notice = (text, type = "ok") => { toastEl.textContent = text; toastEl.className = `toast show ${type}`; clearTimeout(timer); timer = setTimeout(() => toastEl.className = "toast", 2800); };
 
 const me = await api("/api/admin/me");
-document.getElementById("who").textContent = me.email;
+document.getElementById("who").textContent = me.name || me.email;
+document.getElementById("avatar").textContent = (me.name || me.email || "A")[0].toUpperCase();
 categories = await api("/api/categories");
-
-document.getElementById("logout").addEventListener("click", async () => {
-  await api("/api/admin/logout", { method: "POST" });
-  location.href = "/admin/login.html";
-});
-
-document.querySelectorAll("[data-view]").forEach((link) => {
-  link.addEventListener("click", (e) => {
-    e.preventDefault();
-    view = link.dataset.view;
-    location.hash = view;
-    document.querySelectorAll("[data-view]").forEach((a) => a.classList.toggle("active", a === link));
-    render();
-  });
-});
-
-function statusLabel(s) {
-  return { new: "Нове", processing: "В обробці", shipped: "Відправлено", done: "Виконано", cancelled: "Скасовано" }[s] || s;
-}
+document.getElementById("logout").onclick = async () => { await api("/api/admin/logout", { method: "POST" }); location.href = "/admin/login.html"; };
+document.querySelectorAll("[data-view]").forEach((link) => link.onclick = (e) => { e.preventDefault(); view = link.dataset.view; location.hash = view; render(); });
+modal.onclick = (e) => { if (e.target === modal || e.target.closest("[data-close]")) modal.classList.remove("open"); };
+function openModal(title, content, wide = false) { modal.innerHTML = `<div class="modal-card ${wide ? "wide" : ""}"><button class="modal-close" data-close>×</button><h3>${title}</h3>${content}</div>`; modal.classList.add("open"); }
+function heading(kicker, title, text = "") { return `<header class="page-head"><div><p>${kicker}</p><h1>${title}</h1></div>${text ? `<span>${text}</span>` : ""}</header>`; }
+function statusPill(status) { return `<span class="status ${esc(status)}">${esc(statuses[status] || status)}</span>`; }
+function action(action, id, label, cls = "") { return `<button class="icon-btn ${cls}" data-${action}="${id}" title="${label}">${label}</button>`; }
+function activityLine(a) { return `<div class="activity-line"><span class="activity-avatar ${esc(a.actor_type)}">${a.actor_type === "admin" ? "A" : a.actor_type === "customer" ? "К" : "•"}</span><p><b>${esc(a.actor_name || "Гість")}</b> ${esc(a.action)}<small>${date(a.created_at)}</small></p></div>`; }
 
 async function renderDashboard() {
-  const stats = await api("/api/admin/stats");
-  app.innerHTML = `
-    <h2>Огляд</h2>
-    <div class="cards">
-      <div class="stat"><span>Товарів</span><b>${stats.products}</b></div>
-      <div class="stat"><span>Замовлень</span><b>${stats.orders}</b></div>
-      <div class="stat"><span>Виручка</span><b>${money(stats.revenue)}</b></div>
-    </div>
-    <h3>Останні замовлення</h3>
-    <table>
-      <thead><tr><th>№</th><th>Клієнт</th><th>Сума</th><th>Статус</th></tr></thead>
-      <tbody>
-        ${stats.recentOrders.map((o) => `<tr><td>${o.id}</td><td>${o.customer_name}</td><td>${money(o.total)}</td><td>${statusLabel(o.status)}</td></tr>`).join("") || `<tr><td colspan="4">Поки немає</td></tr>`}
-      </tbody>
-    </table>
-  `;
+  const s = await api("/api/admin/stats"); const max = Math.max(...s.chart.map((x) => Number(x.total)), 1); const statusMap = Object.fromEntries(s.statuses.map((x) => [x.status, x.count]));
+  app.innerHTML = `${heading("Центр керування", `Доброго дня, ${esc(me.name?.split(" ")[0] || "адміністраторе")} 👋`, "Ось що відбувається у вашому магазині сьогодні.")}
+    <section class="metrics"><article><span class="metric-icon blue">₴</span><p>Виручка</p><b>${money(s.revenue)}</b><small>за весь час</small></article><article><span class="metric-icon violet">◫</span><p>Замовлення</p><b>${s.orders}</b><small>${statusMap.new || 0} очікують обробки</small></article><article><span class="metric-icon green">♙</span><p>Клієнти</p><b>${s.customers}</b><small>зареєстрованих у кабінеті</small></article><article><span class="metric-icon orange">◇</span><p>Товари</p><b>${s.products}</b><small class="${s.lowStock ? "warn-text" : ""}">${s.lowStock ? `${s.lowStock} майже закінчилися` : "усі позиції в наявності"}</small></article></section>
+    <section class="dashboard-grid"><article class="panel chart-panel"><div class="panel-title"><div><h2>Динаміка продажів</h2><p>Останні 7 днів</p></div><b>${money(s.chart.reduce((sum, x) => sum + Number(x.total), 0))}</b></div><div class="chart">${s.chart.map((x) => `<div class="bar-group"><i style="height:${Math.max(4, Math.round(Number(x.total) / max * 100))}%"><em>${money(x.total)}</em></i><span>${esc(x.label)}</span></div>`).join("")}</div></article><article class="panel funnel"><div class="panel-title"><div><h2>Статуси замовлень</h2><p>Поточний розподіл</p></div></div>${["new","processing","shipped","done","cancelled"].map((x) => `<div class="funnel-row"><span class="dot ${x}"></span><b>${statuses[x]}</b><i></i><strong>${statusMap[x] || 0}</strong></div>`).join("")}</article></section>
+    <section class="dashboard-grid bottom-grid"><article class="panel"><div class="panel-title"><div><h2>Останні замовлення</h2><p>Найсвіжіші покупки</p></div><a href="#orders" data-view="orders">Усі →</a></div><div class="mini-list">${s.recentOrders.length ? s.recentOrders.map((o) => `<div><span class="order-mark">#${o.id}</span><p><b>${esc(o.customer_name)}</b><small>${date(o.created_at)}</small></p><strong>${money(o.total)}</strong>${statusPill(o.status)}</div>`).join("") : `<p class="empty">Замовлень ще немає</p>`}</div></article><article class="panel"><div class="panel-title"><div><h2>Останні дії</h2><p>Клієнти та команда</p></div><a href="#activity" data-view="activity">Журнал →</a></div><div class="activity-list">${s.activity.length ? s.activity.map(activityLine).join("") : `<p class="empty">Події зʼявляться тут</p>`}</div></article></section>`;
+  app.querySelectorAll("[data-view]").forEach((link) => link.onclick = (e) => { e.preventDefault(); view = link.dataset.view; location.hash = view; render(); });
 }
 
-function productForm(p = {}) {
-  return `
-    <div class="form-grid">
-      <input name="name" required placeholder="Назва" value="${p.name || ""}" />
-      <input name="slug" required placeholder="slug" value="${p.slug || ""}" />
-      <select name="categoryId">${categories.map((c) => `<option value="${c.id}" ${c.id === p.categoryId ? "selected" : ""}>${c.name}</option>`).join("")}</select>
-      <input name="price" type="number" required placeholder="Ціна ₴" value="${p.price || ""}" />
-      <input name="oldPrice" type="number" placeholder="Стара ціна" value="${p.oldPrice || ""}" />
-      <input name="stock" type="number" required placeholder="Склад" value="${p.stock ?? 0}" />
-      <input name="color" placeholder="Колір" value="${p.color || ""}" />
-      <input name="storage" placeholder="Конфігурація" value="${p.storage || ""}" />
-      <input name="imageUrl" placeholder="URL зображення" value="${p.imageUrl || ""}" style="grid-column:1/-1" />
-      <input name="tagline" placeholder="Короткий слоган" value="${p.tagline || ""}" style="grid-column:1/-1" />
-      <textarea name="description" placeholder="Опис">${p.description || ""}</textarea>
-      <label style="grid-column:1/-1"><input type="checkbox" name="featured" ${p.featured ? "checked" : ""} /> Рекомендований</label>
-    </div>
-  `;
+function productForm(p = {}) { return `<form id="product-form"><div class="form-grid"><label>Назва<input name="name" required value="${esc(p.name)}" /></label><label>Slug<input name="slug" required value="${esc(p.slug)}" /></label><label>Категорія<select name="categoryId">${categories.map((c) => `<option value="${c.id}" ${Number(c.id) === Number(p.categoryId) ? "selected" : ""}>${esc(c.name)}</option>`).join("")}</select></label><label>Ціна, ₴<input name="price" type="number" min="0" required value="${p.price || ""}" /></label><label>Стара ціна, ₴<input name="oldPrice" type="number" min="0" value="${p.oldPrice || ""}" /></label><label>Залишок<input name="stock" type="number" min="0" required value="${p.stock ?? 0}" /></label><label>Колір<input name="color" value="${esc(p.color)}" /></label><label>Конфігурація<input name="storage" value="${esc(p.storage)}" /></label><div class="span-2 image-source"><span>Зображення товару</span><div class="source-tabs"><button type="button" class="source-tab active" data-source="url">URL-посилання</button><button type="button" class="source-tab" data-source="file">Завантажити файл</button></div><div class="source-content" data-source-content="url"><input name="imageUrl" type="url" placeholder="https://..." value="${esc(p.imageUrl)}" /></div><div class="source-content" data-source-content="file" hidden><label class="file-drop"><input name="imageFile" type="file" accept="image/png,image/jpeg,image/webp" /><b>Обрати фото</b><small>PNG, JPG або WebP · до 5 МБ</small></label><p class="upload-state"></p></div></div><label class="span-2">Короткий слоган<input name="tagline" value="${esc(p.tagline)}" /></label><label class="span-2">Опис<textarea name="description">${esc(p.description)}</textarea></label><label class="check span-2"><input type="checkbox" name="featured" ${p.featured ? "checked" : ""} /> Показувати серед рекомендованих</label></div><div class="modal-actions"><button class="btn">Зберегти</button><button type="button" class="btn ghost" data-close>Скасувати</button></div><p class="form-error"></p></form>`; }
+function readProduct(form, imageUrl) { const f = new FormData(form); return { name:f.get("name"),slug:f.get("slug"),categoryId:Number(f.get("categoryId")),price:Number(f.get("price")),oldPrice:f.get("oldPrice") ? Number(f.get("oldPrice")) : null,stock:Number(f.get("stock")),color:f.get("color"),storage:f.get("storage"),imageUrl,tagline:f.get("tagline"),description:f.get("description"),featured:form.featured.checked }; }
+function setupImageSource(form) { let source = "url"; form.querySelectorAll("[data-source]").forEach((button) => button.onclick = () => { source = button.dataset.source; form.querySelectorAll("[data-source]").forEach((x) => x.classList.toggle("active", x === button)); form.querySelectorAll("[data-source-content]").forEach((x) => x.hidden = x.dataset.sourceContent !== source); }); const input = form.imageFile; input.onchange = () => { const file = input.files[0]; form.querySelector(".upload-state").textContent = file ? `Обрано: ${file.name} (${Math.ceil(file.size / 1024)} КБ)` : ""; }; return () => source; }
+function uploadImage(file) { return new Promise((resolve, reject) => { if (!file) return reject(new Error("Оберіть файл зображення")); if (file.size > 5 * 1024 * 1024) return reject(new Error("Розмір фото має бути до 5 МБ")); const reader = new FileReader(); reader.onerror = () => reject(new Error("Не вдалося прочитати файл")); reader.onload = async () => { try { resolve((await api("/api/admin/upload", { method: "POST", body: { dataUrl: reader.result } })).url); } catch (error) { reject(error); } }; reader.readAsDataURL(file); }); }
+function saveProduct(p) { const form = document.getElementById("product-form"); const selectedSource = setupImageSource(form); form.onsubmit = async (e) => { e.preventDefault(); const submit = form.querySelector(".btn"); try { submit.disabled = true; submit.textContent = "Зберігаємо…"; const imageUrl = selectedSource() === "file" ? await uploadImage(form.imageFile.files[0]) : form.imageUrl.value.trim(); await api(p?.id ? `/api/admin/products/${p.id}` : "/api/admin/products", { method:p?.id ? "PUT" : "POST", body:readProduct(form, imageUrl) }); modal.classList.remove("open"); notice(p?.id ? "Товар оновлено" : "Товар додано"); categories = await api("/api/categories"); renderProducts(); } catch (err) { form.querySelector(".form-error").textContent = err.message; submit.disabled = false; submit.textContent = "Зберегти"; } }; }
+function productRow(p) { return `<tr><td><div class="product-cell">${p.imageUrl ? `<img src="${esc(p.imageUrl)}" alt="" />` : "<span>◇</span>"}<p><b>${esc(p.name)}</b><small>${esc(p.storage || p.tagline || "Без конфігурації")}</small></p></div></td><td>${esc(p.categoryName)}</td><td><b>${money(p.price)}</b>${p.oldPrice ? `<small class="old-price">${money(p.oldPrice)}</small>` : ""}</td><td><span class="stock ${p.stock <= 5 ? "low" : ""}">${p.stock} шт.</span></td><td class="actions">${action("edit",p.id,"Редагувати")}${action("delete",p.id,"Видалити","danger")}</td></tr>`; }
+async function renderProducts() { const products = await api("/api/admin/products"); app.innerHTML = `${heading("Асортимент", "Товари", `${products.length} позицій у каталозі`)}<div class="toolbar"><label class="search-box">⌕<input id="product-search" placeholder="Пошук товару" /></label><button class="btn" id="add-product">+ Додати товар</button></div><div class="panel table-panel"><div class="table-wrap"><table><thead><tr><th>Товар</th><th>Категорія</th><th>Ціна</th><th>Залишок</th><th></th></tr></thead><tbody id="products-body">${products.map(productRow).join("")}</tbody></table></div></div>`;
+  document.getElementById("add-product").onclick = () => { openModal("Новий товар", productForm(), true); saveProduct(); }; document.getElementById("product-search").oninput = (e) => { const q=e.target.value.toLowerCase(); document.getElementById("products-body").innerHTML = products.filter((p)=>`${p.name} ${p.categoryName}`.toLowerCase().includes(q)).map(productRow).join(""); };
+  app.onclick = async (e) => { const id = e.target.closest("[data-edit]")?.dataset.edit; const del = e.target.closest("[data-delete]")?.dataset.delete; if(id) { const p=products.find((x)=>String(x.id)===id); openModal("Редагувати товар", productForm(p), true); saveProduct(p); } if(del && confirm("Видалити товар назавжди?")) { try { await api(`/api/admin/products/${del}`, {method:"DELETE"}); notice("Товар видалено"); renderProducts(); } catch(err) { notice(err.message,"error"); } } };
 }
 
-function readForm(form) {
-  const fd = new FormData(form);
-  return {
-    name: fd.get("name"),
-    slug: fd.get("slug"),
-    categoryId: Number(fd.get("categoryId")),
-    price: Number(fd.get("price")),
-    oldPrice: fd.get("oldPrice") ? Number(fd.get("oldPrice")) : null,
-    stock: Number(fd.get("stock")),
-    color: fd.get("color"),
-    storage: fd.get("storage"),
-    imageUrl: fd.get("imageUrl"),
-    tagline: fd.get("tagline"),
-    description: fd.get("description"),
-    featured: form.querySelector("[name=featured]").checked,
-  };
+function orderCard(o) { return `<article class="order-card"><div class="order-top"><div><p class="order-id">Замовлення <b>#${o.id}</b> <span>${date(o.created_at)}</span></p><h3>${esc(o.customer_name)}</h3><p class="order-contact">${esc(o.customer_phone)} · ${esc(o.customer_email)}<br />${esc(o.city)}, ${esc(o.address)}</p></div><div class="order-total"><b>${money(o.total)}</b><select data-status="${o.id}">${Object.keys(statuses).map(s=>`<option value="${s}" ${s===o.status?"selected":""}>${statuses[s]}</option>`).join("")}</select></div></div><div class="order-items">${o.items.map(i=>`<span>${esc(i.product_name)} <b>×${i.quantity}</b></span>`).join("")}</div>${o.notes ? `<p class="notes">Коментар: ${esc(o.notes)}</p>` : ""}<div class="order-foot"><span>${o.customer_id ? "Клієнт має акаунт" : "Гостьове замовлення"}</span><button class="text-danger" data-delete-order="${o.id}">Видалити</button></div></article>`; }
+async function renderOrders() { const orders = await api("/api/admin/orders"); app.innerHTML = `${heading("Продажі", "Замовлення", `${orders.length} замовлень у системі`)}<div class="toolbar"><div class="filter-pills"><button class="pill active" data-filter="all">Усі <b>${orders.length}</b></button>${["new","processing","shipped","done","cancelled"].map((s)=>`<button class="pill" data-filter="${s}">${statuses[s]} <b>${orders.filter(o=>o.status===s).length}</b></button>`).join("")}</div></div><div id="orders-list" class="orders-list">${orders.map(orderCard).join("") || `<div class="panel empty">Замовлень ще немає</div>`}</div>`;
+  app.onclick = async (e) => { const filter=e.target.closest("[data-filter]"); const del=e.target.closest("[data-delete-order]"); if(filter) { app.querySelectorAll(".pill").forEach(x=>x.classList.toggle("active",x===filter)); const key=filter.dataset.filter; document.getElementById("orders-list").innerHTML=orders.filter(o=>key==="all"||o.status===key).map(orderCard).join(""); } if(del && confirm(`Видалити замовлення №${del.dataset.deleteOrder}? Залишки повернуться на склад.`)) { try {await api(`/api/admin/orders/${del.dataset.deleteOrder}`,{method:"DELETE"});notice("Замовлення видалено");renderOrders();}catch(err){notice(err.message,"error");} } }; app.onchange = async (e) => { const sel=e.target.closest("[data-status]"); if(!sel)return; const previous = orders.find((o) => String(o.id) === sel.dataset.status)?.status; sel.disabled = true; try { const updated = await api(`/api/admin/orders/${sel.dataset.status}`,{method:"PATCH",body:{status:sel.value}}); const local = orders.find((o) => String(o.id) === String(updated.id)); if (local) local.status = updated.status; notice("Статус збережено та оновлено в системі"); await renderOrders(); } catch(err){ sel.value = previous || sel.value; sel.disabled = false; notice(err.message,"error");} };
 }
 
-function openModal(html) {
-  modal.classList.add("open");
-  modal.innerHTML = `<div class="modal-card">${html}</div>`;
-}
+async function renderCategories() { const list = await api("/api/admin/categories"); const form = (c={})=>`<form id="category-form" class="form-grid"><label>Назва<input name="name" required value="${esc(c.name)}" /></label><label>Slug<input name="slug" required value="${esc(c.slug)}" /></label><label>Порядок<input name="sortOrder" type="number" value="${c.sort_order || 0}" /></label><div class="modal-actions span-2"><button class="btn">Зберегти</button><button type="button" class="btn ghost" data-close>Скасувати</button></div><p class="form-error span-2"></p></form>`; const save = (c) => { const f=document.getElementById("category-form");f.onsubmit=async e=>{e.preventDefault();try{const x=new FormData(f);await api(c?`/api/admin/categories/${c.id}`:"/api/admin/categories",{method:c?"PUT":"POST",body:{name:x.get("name"),slug:x.get("slug"),sortOrder:Number(x.get("sortOrder"))}});categories=await api("/api/categories");modal.classList.remove("open");notice("Категорію збережено");renderCategories();}catch(err){f.querySelector(".form-error").textContent=err.message;}};}; app.innerHTML = `${heading("Структура каталогу", "Категорії", `${list.length} категорій`)}<div class="toolbar"><span></span><button class="btn" id="add-category">+ Додати категорію</button></div><div class="category-grid">${list.map(c=>`<article class="category-card"><span>⊞</span><p><b>${esc(c.name)}</b><small>/${esc(c.slug)} · ${c.product_count} товарів</small></p><em>Порядок ${c.sort_order}</em><div>${action("edit-category",c.id,"Редагувати")}${action("delete-category",c.id,"Видалити","danger")}</div></article>`).join("")}</div>`; document.getElementById("add-category").onclick=()=>{openModal("Нова категорія",form());save();}; app.onclick=async e=>{const id=e.target.closest("[data-edit-category]")?.dataset.editCategory,del=e.target.closest("[data-delete-category]")?.dataset.deleteCategory;if(id){const c=list.find(x=>String(x.id)===id);openModal("Редагувати категорію",form(c));save(c);}if(del&&confirm("Видалити категорію?")){try{await api(`/api/admin/categories/${del}`,{method:"DELETE"});notice("Категорію видалено");renderCategories();}catch(err){notice(err.message,"error");}}}; }
 
-modal.addEventListener("click", (e) => {
-  if (e.target === modal || e.target.dataset.close) modal.classList.remove("open");
-});
-
-async function renderProducts() {
-  const products = await api("/api/admin/products");
-  app.innerHTML = `
-    <div style="display:flex;justify-content:space-between;align-items:center">
-      <h2>Товари</h2>
-      <button class="btn" id="add">Додати товар</button>
-    </div>
-    <table>
-      <thead><tr><th>Назва</th><th>Категорія</th><th>Ціна</th><th>Склад</th><th></th></tr></thead>
-      <tbody>
-        ${products
-          .map(
-            (p) => `<tr>
-              <td>${p.name}</td>
-              <td>${p.categoryName}</td>
-              <td>${money(p.price)}</td>
-              <td>${p.stock}</td>
-              <td>
-                <button class="btn ghost" data-edit="${p.id}">Редагувати</button>
-                <button class="btn danger" data-del="${p.id}">Видалити</button>
-              </td>
-            </tr>`
-          )
-          .join("")}
-      </tbody>
-    </table>
-  `;
-
-  document.getElementById("add").onclick = () => {
-    openModal(`<h3>Новий товар</h3><form id="pf">${productForm()}<div style="margin-top:12px;display:flex;gap:8px"><button class="btn">Зберегти</button><button type="button" class="btn ghost" data-close>Скасувати</button></div><div class="error" id="ferr"></div></form>`);
-    document.getElementById("pf").onsubmit = async (e) => {
-      e.preventDefault();
-      try {
-        await api("/api/admin/products", { method: "POST", body: readForm(e.target) });
-        modal.classList.remove("open");
-        renderProducts();
-      } catch (err) {
-        document.getElementById("ferr").textContent = err.message;
-      }
-    };
-  };
-
-  app.onclick = async (e) => {
-    const del = e.target.closest("[data-del]");
-    const edit = e.target.closest("[data-edit]");
-    if (del && confirm("Видалити товар?")) {
-      await api("/api/admin/products/" + del.dataset.del, { method: "DELETE" });
-      renderProducts();
-    }
-    if (edit) {
-      const p = products.find((x) => String(x.id) === edit.dataset.edit);
-      openModal(`<h3>Редагувати</h3><form id="pf">${productForm(p)}<div style="margin-top:12px;display:flex;gap:8px"><button class="btn">Оновити</button><button type="button" class="btn ghost" data-close>Скасувати</button></div><div class="error" id="ferr"></div></form>`);
-      document.getElementById("pf").onsubmit = async (ev) => {
-        ev.preventDefault();
-        try {
-          await api("/api/admin/products/" + p.id, { method: "PUT", body: readForm(ev.target) });
-          modal.classList.remove("open");
-          renderProducts();
-        } catch (err) {
-          document.getElementById("ferr").textContent = err.message;
-        }
-      };
-    }
-  };
-}
-
-async function renderOrders() {
-  const orders = await api("/api/admin/orders");
-  app.innerHTML = `
-    <h2>Замовлення</h2>
-    ${orders
-      .map(
-        (o) => `
-      <div class="stat" style="margin-bottom:12px">
-        <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap">
-          <div>
-            <b>№${o.id}</b> · ${o.customer_name} · ${o.customer_phone}<br />
-            <span style="color:#a1a1aa">${o.city}, ${o.address} · ${o.customer_email}</span>
-          </div>
-          <div>
-            <div>${money(o.total)}</div>
-            <select data-status="${o.id}">
-              ${["new", "processing", "shipped", "done", "cancelled"].map((s) => `<option value="${s}" ${s === o.status ? "selected" : ""}>${statusLabel(s)}</option>`).join("")}
-            </select>
-            <button class="btn danger" type="button" data-del-order="${o.id}" style="margin-top:8px">Видалити</button>
-          </div>
-        </div>
-        <ul>${o.items.map((i) => `<li>${i.product_name} × ${i.quantity} — ${money(i.price * i.quantity)}</li>`).join("")}</ul>
-        ${o.notes ? `<p style="color:#a1a1aa">Коментар: ${o.notes}</p>` : ""}
-      </div>`
-      )
-      .join("") || `<p>Замовлень ще немає</p>`}
-  `;
-  app.onchange = async (e) => {
-    const sel = e.target.closest("[data-status]");
-    if (!sel) return;
-    await api("/api/admin/orders/" + sel.dataset.status, { method: "PATCH", body: { status: sel.value } });
-  };
-  app.onclick = async (e) => {
-    const del = e.target.closest("[data-del-order]");
-    if (!del) return;
-    if (!confirm(`Видалити замовлення №${del.dataset.delOrder}? Товари повернуться на склад.`)) return;
-    await api("/api/admin/orders/" + del.dataset.delOrder, { method: "DELETE" });
-    renderOrders();
-  };
-}
-
-async function render() {
-  document.querySelectorAll("[data-view]").forEach((a) => a.classList.toggle("active", a.dataset.view === view));
-  if (view === "products") return renderProducts();
-  if (view === "orders") return renderOrders();
-  return renderDashboard();
-}
-
+function customerRow(c) { return `<tr><td><div class="customer-cell"><span>${esc(c.name?.[0]?.toUpperCase() || "К")}</span><p><b>${esc(c.name)}</b><small>з ${date(c.created_at)}</small></p></div></td><td><b>${esc(c.email)}</b><small>${esc(c.phone || "Телефон не вказано")} · ${esc(c.city || "—")}</small></td><td>${c.orders_count}</td><td><b>${money(c.total_spent)}</b></td><td>${date(c.last_order_at || c.updated_at)}</td><td class="actions">${action("edit-customer",c.id,"Редагувати")}${action("delete-customer",c.id,"Видалити","danger")}</td></tr>`; }
+async function renderCustomers() { const customers = await api("/api/admin/customers"); app.innerHTML = `${heading("Клієнтська база", "Клієнти", `${customers.length} зареєстрованих користувачів`)}<div class="toolbar"><label class="search-box">⌕<input id="customer-search" placeholder="Імʼя, email або місто" /></label></div><div class="panel table-panel"><div class="table-wrap"><table><thead><tr><th>Клієнт</th><th>Контакти</th><th>Замовлень</th><th>Витрачено</th><th>Остання активність</th><th></th></tr></thead><tbody id="customers-body">${customers.map(customerRow).join("")}</tbody></table></div></div>`; document.getElementById("customer-search").oninput=e=>{const q=e.target.value.toLowerCase();document.getElementById("customers-body").innerHTML=customers.filter(c=>`${c.name} ${c.email} ${c.city}`.toLowerCase().includes(q)).map(customerRow).join("");}; app.onclick=async e=>{const id=e.target.closest("[data-edit-customer]")?.dataset.editCustomer,del=e.target.closest("[data-delete-customer]")?.dataset.deleteCustomer;if(id){const c=customers.find(x=>String(x.id)===id);openModal("Профіль клієнта",`<form id="customer-form" class="form-grid"><label>Імʼя<input name="name" required value="${esc(c.name)}" /></label><label>Email<input disabled value="${esc(c.email)}" /></label><label>Телефон<input name="phone" value="${esc(c.phone)}" /></label><label>Місто<input name="city" value="${esc(c.city)}" /></label><label class="span-2">Адреса<input name="address" value="${esc(c.address)}" /></label><div class="modal-actions span-2"><button class="btn">Зберегти</button><button type="button" class="btn ghost" data-close>Скасувати</button></div><p class="form-error span-2"></p></form>`);const f=document.getElementById("customer-form");f.onsubmit=async ev=>{ev.preventDefault();try{const d=new FormData(f);await api(`/api/admin/customers/${c.id}`,{method:"PUT",body:Object.fromEntries(d)});modal.classList.remove("open");notice("Профіль оновлено");renderCustomers();}catch(err){f.querySelector(".form-error").textContent=err.message;}};}if(del&&confirm("Видалити клієнта? Його замовлення залишаться в системі.")){try{await api(`/api/admin/customers/${del}`,{method:"DELETE"});notice("Клієнта видалено");renderCustomers();}catch(err){notice(err.message,"error");}}}; }
+async function renderActivity() { const rows=await api("/api/admin/activity?limit=150");app.innerHTML=`${heading("Прозорість системи","Журнал дій",`${rows.length} останніх подій`)}<section class="panel activity-panel"><div class="timeline">${rows.length?rows.map(a=>`<div class="timeline-row">${activityLine(a)}<span>${esc(a.entity_type)}${a.entity_id?` #${a.entity_id}`:""}</span></div>`).join(""):`<p class="empty">Подій ще немає</p>`}</div></section>`;}
+async function render() { document.querySelectorAll("[data-view]").forEach(a=>a.classList.toggle("active",a.dataset.view===view)); app.innerHTML="<div class='loading'>Завантажуємо дані…</div>"; try { if(view==="products")return renderProducts();if(view==="orders")return renderOrders();if(view==="categories")return renderCategories();if(view==="customers")return renderCustomers();if(view==="activity")return renderActivity();return renderDashboard(); } catch(err){app.innerHTML=`<div class="panel empty">Не вдалося завантажити дані: ${esc(err.message)}</div>`;} }
 await render();

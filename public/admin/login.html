@@ -6,34 +6,40 @@
     <title>Вхід — iCore Admin</title>
     <link rel="stylesheet" href="/admin/admin.css" />
   </head>
-  <body>
-    <div class="login-wrap">
-      <form class="login" id="login">
-        <h2>iCore Admin</h2>
-        <p style="color:#a1a1aa;margin:0">Керування каталогом і замовленнями</p>
-        <input name="email" type="email" required placeholder="Email" value="admin@icore.store" />
-        <input name="password" type="password" required placeholder="Пароль" />
-        <button class="btn">Увійти</button>
-        <div class="error" id="error"></div>
-        <a href="/" style="color:#a1a1aa;font-size:13px">← На вітрину</a>
-      </form>
-    </div>
+  <body class="admin-login-page">
+    <div class="login-orb orb-a"></div><div class="login-orb orb-b"></div><div class="login-grid"></div>
+    <main class="login-wrap">
+      <section class="login-intro">
+        <a href="/" class="login-brand"><span></span> iCore <small>ADMIN</small></a>
+        <div class="intro-copy"><p>Центр керування</p><h1>Тримайте<br /><i>все</i> під контролем.</h1><span>Керуйте асортиментом, замовленнями та клієнтською базою в одному місці.</span></div>
+        <div class="intro-stats"><div><b>24/7</b><small>доступ до даних</small></div><div><b>∞</b><small>можливостей для росту</small></div></div>
+      </section>
+      <section class="login-card-wrap">
+        <form class="login" id="login">
+          <div class="login-icon">↗</div><p class="login-kicker">З поверненням</p><h2>Увійти в панель</h2><p class="login-note">Вкажіть дані адміністратора, щоб продовжити.</p>
+          <label>Email<input name="email" type="email" required autocomplete="email" placeholder="admin@icore.store" /></label>
+          <label>Пароль<div class="password-field"><input name="password" type="password" required autocomplete="current-password" placeholder="Введіть пароль" /><button type="button" id="toggle-password" aria-label="Показати пароль">◉</button></div></label>
+          <button class="btn login-submit" id="submit">Увійти <span>→</span></button>
+          <div class="error" id="error" role="alert"></div>
+          <a href="/" class="back-link">← Повернутися до магазину</a>
+        </form>
+      </section>
+    </main>
     <script type="module">
-      document.getElementById("login").addEventListener("submit", async (e) => {
+      const form = document.getElementById("login");
+      const password = form.elements.password;
+      document.getElementById("toggle-password").onclick = () => { const visible = password.type === "text"; password.type = visible ? "password" : "text"; document.getElementById("toggle-password").textContent = visible ? "◉" : "◌"; };
+      form.addEventListener("submit", async (e) => {
         e.preventDefault();
-        const fd = new FormData(e.target);
-        const res = await fetch("/api/admin/login", {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email: fd.get("email"), password: fd.get("password") }),
-        });
-        const data = await res.json();
-        if (!res.ok) {
-          document.getElementById("error").textContent = data.error;
-          return;
-        }
-        location.href = "/admin/";
+        const submit = document.getElementById("submit"); const error = document.getElementById("error"); const fd = new FormData(form);
+        error.textContent = ""; submit.disabled = true; submit.innerHTML = "Перевіряємо дані…";
+        try {
+          const res = await fetch("/api/admin/login", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: fd.get("email"), password: fd.get("password") }) });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.error || "Не вдалося увійти");
+          submit.innerHTML = "Готово! Відкриваємо панель ✓"; form.classList.add("success");
+          setTimeout(() => { location.href = "/admin/"; }, 420);
+        } catch (err) { error.textContent = err.message; submit.disabled = false; submit.innerHTML = "Увійти <span>→</span>"; }
       });
     </script>
   </body>

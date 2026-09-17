@@ -3,23 +3,32 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Адмін-панель — iCore</title>
+    <title>iCore — Admin</title>
     <link rel="stylesheet" href="/admin/admin.css" />
   </head>
   <body>
     <div class="shell">
       <aside class="side">
-        <h1> iCore Admin</h1>
-        <a href="#dashboard" class="active" data-view="dashboard">Огляд</a>
-        <a href="#products" data-view="products">Товари</a>
-        <a href="#orders" data-view="orders">Замовлення</a>
-        <a href="/" target="_blank">Відкрити магазин</a>
-        <button class="link" id="logout">Вийти</button>
-        <p id="who" style="color:#a1a1aa;font-size:12px;margin-top:24px"></p>
+        <a class="brand" href="#dashboard"><span></span> iCore <small>ADMIN</small></a>
+        <p class="side-label">Керування</p>
+        <nav>
+          <a href="#dashboard" class="active" data-view="dashboard"><i>◈</i> Огляд</a>
+          <a href="#orders" data-view="orders"><i>◫</i> Замовлення</a>
+          <a href="#products" data-view="products"><i>◇</i> Товари</a>
+          <a href="#categories" data-view="categories"><i>⊞</i> Категорії</a>
+          <a href="#customers" data-view="customers"><i>♙</i> Клієнти</a>
+          <a href="#activity" data-view="activity"><i>◷</i> Журнал дій</a>
+        </nav>
+        <div class="side-bottom">
+          <a href="/" target="_blank"><i>↗</i> Відкрити магазин</a>
+          <div class="admin-user"><span class="avatar" id="avatar">A</span><p><b id="who">Адміністратор</b><small>Адміністратор</small></p></div>
+          <button class="link" id="logout">Вийти <span>→</span></button>
+        </div>
       </aside>
       <main class="main" id="app"></main>
     </div>
     <div class="modal" id="modal"></div>
+    <div class="toast" id="toast"></div>
     <script type="module" src="/admin/admin.js"></script>
   </body>
 </html>

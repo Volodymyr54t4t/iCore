@@ -192,3 +192,19 @@ root.addEventListener("submit", async (e) => {
 });
 
 if (me) await load();
+
+// Order statuses are changed by the administrator in a separate session.
+// Refresh only while the customer is viewing this tab, without interrupting forms.
+setInterval(async () => {
+  if (!me || document.hidden || tab !== "orders") return;
+  try {
+    const fresh = await api("/api/account/orders");
+    if (JSON.stringify(fresh.map((o) => [o.id, o.status])) !== JSON.stringify(orders.map((o) => [o.id, o.status]))) {
+      orders = fresh;
+      render();
+      toast("Статус замовлення оновлено");
+    }
+  } catch {
+    // The next scheduled refresh will retry; no need to distract the customer.
+  }
+}, 15000);
