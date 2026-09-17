@@ -1,4 +1,4 @@
-import { api, formatPrice, addToCart, mountNav, showCartConfirmation } from "./api.js";
+import { api, formatPrice, addToCart, mountNav, showCartConfirmation, isFavorite, toggleFavorite, toast } from "./api.js";
 
 await mountNav();
 
@@ -30,7 +30,8 @@ function card(p) {
           <span class="product-category">${p.category.name}</span>
           ${discount ? `<span class="product-discount">−${discount}%</span>` : ""}
         </div>
-        <a class="product-card-open" href="/product.html?slug=${p.slug}" aria-label="Деталі ${p.name}"><span>↗</span></a>
+        <button class="product-card-favorite ${isFavorite(p.id) ? "is-active" : ""}" type="button" data-favorite="${p.id}" aria-label="${isFavorite(p.id) ? "Прибрати з обраного" : "Додати в обране"}" aria-pressed="${isFavorite(p.id)}">♥</button>
+        <button class="product-card-open" type="button" data-quick-view="${p.id}" aria-label="Швидкий перегляд ${p.name}"><span>↗</span></button>
       </div>
       <div class="card-body">
         <div class="product-card-meta"><span>${p.stock > 0 ? "В наявності" : "Під замовлення"}</span><i></i><span>Офіційна гарантія</span></div>
@@ -103,12 +104,59 @@ searchEl.addEventListener("input", () => load());
 sortEl.addEventListener("change", () => load());
 
 productsEl.addEventListener("click", (e) => {
+  const favorite = e.target.closest("[data-favorite]");
+  if (favorite) {
+    const product = window.__products.find((p) => String(p.id) === favorite.dataset.favorite);
+    if (!product) return;
+    const added = toggleFavorite(product);
+    favorite.classList.toggle("is-active", added);
+    favorite.setAttribute("aria-pressed", String(added));
+    favorite.setAttribute("aria-label", added ? "Прибрати з обраного" : "Додати в обране");
+    toast(added ? "Додано в обране" : "Прибрано з обраного");
+    return;
+  }
+  const quickView = e.target.closest("[data-quick-view]");
+  if (quickView) {
+    const product = window.__products.find((p) => String(p.id) === quickView.dataset.quickView);
+    if (product) showQuickView(product);
+    return;
+  }
   const btn = e.target.closest("[data-add]");
   if (!btn) return;
   const product = window.__products.find((p) => String(p.id) === btn.dataset.add);
   if (!product) return;
   addToCart(product, 1);
   showCartConfirmation(product);
+});
+
+function showQuickView(product) {
+  document.querySelector(".quick-view")?.remove();
+  const modal = document.createElement("div");
+  modal.className = "quick-view";
+  modal.setAttribute("role", "dialog");
+  modal.setAttribute("aria-modal", "true");
+  modal.setAttribute("aria-label", `Швидкий перегляд: ${product.name}`);
+  modal.innerHTML = `
+    <div class="quick-view-backdrop" data-close-quick-view></div>
+    <section class="quick-view-panel">
+      <button class="quick-view-close" type="button" data-close-quick-view aria-label="Закрити">×</button>
+      <img src="${product.imageUrl}" alt="${product.name}" />
+      <div class="quick-view-copy">
+        <p>${product.category.name}</p><h2>${product.name}</h2><span>${product.tagline}</span>
+        <div class="quick-view-price">${formatPrice(product.price)}${product.oldPrice ? `<del>${formatPrice(product.oldPrice)}</del>` : ""}</div>
+        <small>${product.stock > 0 ? `● В наявності: ${product.stock} шт.` : "Під замовлення"}</small>
+        <div><button class="btn" type="button" data-quick-add>У кошик <span>+</span></button><a class="btn ghost" href="/product.html?slug=${product.slug}">Усі деталі →</a></div>
+      </div>
+    </section>`;
+  document.body.appendChild(modal);
+  const close = () => modal.remove();
+  modal.querySelectorAll("[data-close-quick-view]").forEach((button) => button.addEventListener("click", close));
+  modal.querySelector("[data-quick-add]")?.addEventListener("click", () => { addToCart(product); showCartConfirmation(product); close(); });
+  modal.querySelector(".quick-view-close").focus();
+}
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") document.querySelector(".quick-view")?.remove();
 });
 
 await load();

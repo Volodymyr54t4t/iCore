@@ -15,6 +15,8 @@ export async function api(path, options = {}) {
 }
 
 const CART_KEY = "icore-cart";
+const WISHLIST_KEY = "icore-wishlist";
+const RECENT_KEY = "icore-recent-products";
 
 export function getCart() {
   try {
@@ -80,6 +82,42 @@ export function updateCartBadge() {
   });
 }
 
+export function getWishlist() {
+  try { return JSON.parse(localStorage.getItem(WISHLIST_KEY)) || []; } catch { return []; }
+}
+
+export function isFavorite(id) {
+  return getWishlist().some((product) => String(product.id) === String(id));
+}
+
+export function toggleFavorite(product) {
+  const items = getWishlist();
+  const index = items.findIndex((item) => String(item.id) === String(product.id));
+  if (index >= 0) items.splice(index, 1);
+  else items.unshift({ id: product.id, slug: product.slug, name: product.name, price: product.price, oldPrice: product.oldPrice, imageUrl: product.imageUrl, tagline: product.tagline, category: product.category });
+  localStorage.setItem(WISHLIST_KEY, JSON.stringify(items));
+  updateWishlistBadge();
+  return index < 0;
+}
+
+export function updateWishlistBadge() {
+  document.querySelectorAll("[data-wishlist-count]").forEach((el) => {
+    const count = getWishlist().length;
+    el.textContent = count;
+    el.hidden = count === 0;
+  });
+}
+
+export function rememberProduct(product) {
+  const items = getRecentProducts().filter((item) => String(item.id) !== String(product.id));
+  items.unshift({ id: product.id, slug: product.slug, name: product.name, price: product.price, oldPrice: product.oldPrice, imageUrl: product.imageUrl, tagline: product.tagline, category: product.category });
+  localStorage.setItem(RECENT_KEY, JSON.stringify(items.slice(0, 6)));
+}
+
+export function getRecentProducts() {
+  try { return JSON.parse(localStorage.getItem(RECENT_KEY)) || []; } catch { return []; }
+}
+
 export function toast(message) {
   let el = document.querySelector(".toast");
   if (!el) {
@@ -121,6 +159,7 @@ export function nav(me = null) {
         </nav>
         <div class="nav-spacer"></div>
         ${account}
+        <a class="wishlist-link" href="/favorites.html" aria-label="Обране">Обране <b class="badge" data-wishlist-count hidden>0</b></a>
         <a class="cart-link" href="/cart.html">Кошик <b class="badge" data-cart-count hidden>0</b></a>
       </div>
     </header>
@@ -133,6 +172,7 @@ export async function mountNav() {
   const me = await getCustomer();
   host.innerHTML = nav(me);
   updateCartBadge();
+  updateWishlistBadge();
   await applySiteContent();
   return me;
 }
