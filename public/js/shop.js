@@ -69,12 +69,23 @@ try {
   chipsEl.innerHTML = `<div class="empty">${error.message}</div>`;
 }
 
+function selectCategory(chip) {
+  category = chip.dataset.category;
+  document.querySelectorAll(".filters .chip").forEach((el) => el.classList.toggle("active", el.dataset.category === category));
+  load();
+}
+
 document.querySelector(".filters").addEventListener("click", (e) => {
   const chip = e.target.closest("[data-category]");
   if (!chip) return;
-  category = chip.dataset.category;
-  document.querySelectorAll(".chip").forEach((el) => el.classList.toggle("active", el === chip));
-  load();
+  selectCategory(chip);
+});
+
+document.querySelectorAll(".category-card[data-category]").forEach((card) => {
+  card.addEventListener("click", () => {
+    selectCategory(card);
+    document.querySelector("#catalog")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
 });
 
 searchEl.addEventListener("input", () => load());
