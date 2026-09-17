@@ -13,15 +13,18 @@ export function isMailConfigured() {
   return Boolean(process.env.SMTP_USER && process.env.SMTP_PASS && process.env.CONTACT_TO);
 }
 
-export async function sendContactMail({ name, email, phone, topic, message }) {
+export function createMailTransporter() {
   if (!isMailConfigured()) throw new Error("Пошта для звернень ще не налаштована");
-
-  const transporter = nodemailer.createTransport({
+  return nodemailer.createTransport({
     host: process.env.SMTP_HOST || "smtp.gmail.com",
     port: Number(process.env.SMTP_PORT) || 465,
     secure: (process.env.SMTP_SECURE || "true") !== "false",
     auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
   });
+}
+
+export async function sendContactMail({ name, email, phone, topic, message }) {
+  const transporter = createMailTransporter();
 
   const safe = Object.fromEntries(Object.entries({ name, email, phone, topic, message }).map(([key, value]) => [key, escapeHtml(value)]));
   const subject = `iCore · нове звернення: ${topic}`;

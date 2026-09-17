@@ -9,10 +9,12 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import crypto from "node:crypto";
 import { sendContactMail } from "../services/contactMail.js";
+import { subscribeNewsletter } from "../services/newsletter.js";
 
 export const publicRouter = Router();
 
 const contactAttempts = new Map();
+const subscribeAttempts = new Map();
 
 function allowContactRequest(ip) {
   const now = Date.now();
@@ -21,6 +23,16 @@ function allowContactRequest(ip) {
   if (attempts.length >= 5) return false;
   attempts.push(now);
   contactAttempts.set(ip, attempts);
+  return true;
+}
+
+function allowSubscribeRequest(ip) {
+  const now = Date.now();
+  const windowMs = 60 * 60 * 1000;
+  const attempts = (subscribeAttempts.get(ip) || []).filter((time) => now - time < windowMs);
+  if (attempts.length >= 5) return false;
+  attempts.push(now);
+  subscribeAttempts.set(ip, attempts);
   return true;
 }
 
@@ -75,6 +87,28 @@ publicRouter.post("/contact", asyncHandler(async (req, res) => {
     console.error("Contact mail:", error.message);
     res.status(503).json({ error: "Не вдалося надіслати повідомлення. Спробуйте ще раз або зателефонуйте нам." });
   }
+}));
+
+publicRouter.post("/newsletter/subscribe", asyncHandler(async (req, res) => {
+  const { email, website } = req.body || {};
+  if (website) return res.status(201).json({ ok: true });
+  if (!allowSubscribeRequest(req.ip)) return res.status(429).json({ error: "Забагато спроб. Спробуйте трохи пізніше." });
+  if (typeof email !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 150) {
+    return res.status(400).json({ error: "Вкажіть коректну email-адресу" });
+  }
+  await subscribeNewsletter(email);
+  res.status(201).json({ ok: true });
+}));
+
+publicRouter.get("/newsletter/unsubscribe", asyncHandler(async (req, res) => {
+  const token = String(req.query.token || "");
+  if (!/^[a-f0-9]{48}$/.test(token)) return res.status(400).send("Некоректне посилання");
+  const { rowCount } = await pool.query(
+    "UPDATE newsletter_subscribers SET is_active = FALSE, unsubscribed_at = NOW() WHERE unsubscribe_token = $1 AND is_active = TRUE",
+    [token]
+  );
+  const message = rowCount ? "Ви успішно відписалися від розсилки iCore." : "Ця адреса вже відписана від розсилки iCore.";
+  res.type("html").send(`<!doctype html><html lang="uk"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>iCore</title><body style="margin:0;display:grid;min-height:100vh;place-items:center;background:#f5f5f7;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;color:#1d1d1f"><main style="max-width:420px;padding:40px;text-align:center;border-radius:24px;background:#fff;box-shadow:0 18px 45px rgba(0,0,0,.08)"><p style="margin:0 0 14px;color:#0071e3;font-weight:700;letter-spacing:.1em;font-size:11px">iCORE STORE</p><h1 style="margin:0;font-size:27px;letter-spacing:-.04em">Готово</h1><p style="color:#6e6e73;line-height:1.5">${message}</p><a href="/" style="color:#0071e3;text-decoration:none;font-weight:600">На головну →</a></main></body></html>`);
 }));
 
 publicRouter.get("/products", asyncHandler(async (req, res) => {

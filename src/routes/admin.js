@@ -5,6 +5,7 @@ import { pool } from "../db/pool.js";
 import { requireAdmin } from "../middleware/auth.js";
 import { asyncHandler } from "../utils/async.js";
 import { logActivity } from "../services/activity.js";
+import { notifySubscribers } from "../services/newsletter.js";
 
 export const adminRouter = Router();
 
@@ -226,6 +227,7 @@ adminRouter.post("/products", requireAdmin, asyncHandler(async (req, res) => {
       ]
     );
     await audit(req, "Створив товар", "product", rows[0].id, { name: rows[0].name });
+    notifySubscribers(rows[0], "new-product").catch((error) => console.error("Newsletter new product:", error.message));
     res.status(201).json(rows[0]);
   } catch (error) {
     if (error.code === "23505") return res.status(409).json({ error: "Slug уже зайнятий" });
@@ -236,6 +238,9 @@ adminRouter.post("/products", requireAdmin, asyncHandler(async (req, res) => {
 adminRouter.put("/products/:id", requireAdmin, asyncHandler(async (req, res) => {
   const body = req.body || {};
   try {
+    const { rows: previousRows } = await pool.query("SELECT price FROM products WHERE id = $1", [req.params.id]);
+    if (!previousRows[0]) return res.status(404).json({ error: "Товар не знайдено" });
+    const previousPrice = previousRows[0].price;
     const { rows } = await pool.query(
       `UPDATE products SET
          category_id = $1, slug = $2, name = $3, tagline = $4, description = $5,
@@ -258,8 +263,10 @@ adminRouter.put("/products/:id", requireAdmin, asyncHandler(async (req, res) => 
         req.params.id,
       ]
     );
-    if (!rows[0]) return res.status(404).json({ error: "Товар не знайдено" });
     await audit(req, "Оновив товар", "product", rows[0].id, { name: rows[0].name });
+    if (Number(rows[0].price) < Number(previousPrice)) {
+      notifySubscribers(rows[0], "price-drop", previousPrice).catch((error) => console.error("Newsletter price drop:", error.message));
+    }
     res.json(rows[0]);
   } catch (error) {
     if (error.code === "23505") return res.status(409).json({ error: "Slug уже зайнятий" });
