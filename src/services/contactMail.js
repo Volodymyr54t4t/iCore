@@ -9,12 +9,16 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
+export function isSmtpConfigured() {
+  return Boolean(process.env.SMTP_USER && process.env.SMTP_PASS);
+}
+
 export function isMailConfigured() {
-  return Boolean(process.env.SMTP_USER && process.env.SMTP_PASS && process.env.CONTACT_TO);
+  return Boolean(isSmtpConfigured() && process.env.CONTACT_TO);
 }
 
 export function createMailTransporter() {
-  if (!isMailConfigured()) throw new Error("Пошта для звернень ще не налаштована");
+  if (!isSmtpConfigured()) throw new Error("SMTP-пошта ще не налаштована");
   return nodemailer.createTransport({
     host: process.env.SMTP_HOST || "smtp.gmail.com",
     port: Number(process.env.SMTP_PORT) || 465,

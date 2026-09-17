@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import { pool } from "../db/pool.js";
-import { createMailTransporter, isMailConfigured } from "./contactMail.js";
+import { createMailTransporter, isSmtpConfigured } from "./contactMail.js";
 
 const shopUrl = () => (process.env.SHOP_URL || "http://localhost:3000").replace(/\/$/, "");
 const price = (value) => new Intl.NumberFormat("uk-UA").format(value) + " ₴";
@@ -43,7 +43,7 @@ function productEmail(product, kind, oldPrice) {
 }
 
 export async function notifySubscribers(product, kind, oldPrice = null) {
-  if (!isMailConfigured()) return { sent: 0, skipped: true };
+  if (!isSmtpConfigured()) return { sent: 0, skipped: true };
   const { rows: subscribers } = await pool.query("SELECT email, unsubscribe_token FROM newsletter_subscribers WHERE is_active = TRUE");
   if (!subscribers.length) return { sent: 0 };
   const mail = productEmail(product, kind, oldPrice);
@@ -59,4 +59,61 @@ export async function notifySubscribers(product, kind, oldPrice = null) {
     sent += 1;
   }
   return { sent };
+}
+
+function escapeHtml(value) {
+  return String(value || "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function newsletterMessageEmail({ subject, message }) {
+  const safeSubject = escapeHtml(subject);
+  const safeMessage = escapeHtml(message).replace(/\r?\n/g, "<br>");
+  return {
+    subject: `iCore · ${subject}`,
+    text: `${subject}\n\n${message}`,
+    html: (unsubscribeUrl) => `
+      <div style="margin:0;padding:28px 14px;background:#f3f4f8;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;color:#17171b">
+        <div style="max-width:620px;margin:auto;overflow:hidden;border-radius:26px;background:#fff;box-shadow:0 18px 42px rgba(20,26,48,.12)">
+          <div style="padding:34px;color:#fff;background:linear-gradient(130deg,#0644b4,#25398b 58%,#492978)">
+            <div style="font-size:11px;font-weight:700;letter-spacing:.13em;text-transform:uppercase;color:#c9d7ff">iCore Store · Apple technology</div>
+            <h1 style="margin:18px 0 0;font-size:31px;line-height:1.05;letter-spacing:-1.4px">${safeSubject}</h1>
+          </div>
+          <div style="padding:29px 34px 32px">
+            <div style="font-size:15px;line-height:1.65;color:#3b3b43">${safeMessage}</div>
+            <p style="margin:27px 0 0;padding-top:17px;border-top:1px solid #ececf0;color:#92929a;font-size:10px;line-height:1.5">Ви отримали цей лист, бо підписалися на новини iCore. <a href="${unsubscribeUrl}" style="color:#6c6c74">Відписатися від розсилки</a></p>
+          </div>
+        </div>
+      </div>`,
+  };
+}
+
+export async function sendNewsletterMessage({ subject, message, subscribers }) {
+  if (!isSmtpConfigured()) throw new Error("SMTP-пошта ще не налаштована");
+  if (!subscribers.length) return { sent: 0, failed: [] };
+
+  const mail = newsletterMessageEmail({ subject, message });
+  const transporter = createMailTransporter();
+  let sent = 0;
+  const failed = [];
+  for (const subscriber of subscribers) {
+    try {
+      await transporter.sendMail({
+        from: `iCore Store <${process.env.SMTP_USER}>`,
+        to: subscriber.email,
+        subject: mail.subject,
+        text: mail.text,
+        html: mail.html(`${shopUrl()}/api/newsletter/unsubscribe?token=${subscriber.unsubscribe_token}`),
+      });
+      sent += 1;
+    } catch (error) {
+      console.error(`Newsletter delivery to ${subscriber.email}:`, error.message);
+      failed.push(subscriber.email);
+    }
+  }
+  return { sent, failed };
 }

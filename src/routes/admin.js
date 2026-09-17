@@ -5,7 +5,8 @@ import { pool } from "../db/pool.js";
 import { requireAdmin } from "../middleware/auth.js";
 import { asyncHandler } from "../utils/async.js";
 import { logActivity } from "../services/activity.js";
-import { notifySubscribers } from "../services/newsletter.js";
+import { notifySubscribers, sendNewsletterMessage } from "../services/newsletter.js";
+import { isSmtpConfigured } from "../services/contactMail.js";
 
 export const adminRouter = Router();
 
@@ -119,6 +120,48 @@ adminRouter.get("/activity", requireAdmin, asyncHandler(async (req, res) => {
   const limit = Math.min(Math.max(Number(req.query.limit) || 80, 1), 200);
   const { rows } = await pool.query("SELECT * FROM activity_log ORDER BY id DESC LIMIT $1", [limit]);
   res.json(rows);
+}));
+
+adminRouter.get("/newsletter-subscribers", requireAdmin, asyncHandler(async (_req, res) => {
+  const { rows } = await pool.query(`SELECT id, email, is_active, created_at, unsubscribed_at
+    FROM newsletter_subscribers ORDER BY is_active DESC, created_at DESC`);
+  res.json(rows);
+}));
+
+adminRouter.post("/newsletter/send", requireAdmin, asyncHandler(async (req, res) => {
+  const { subject, message, audience, subscriberIds } = req.body || {};
+  if (typeof subject !== "string" || subject.trim().length < 2 || subject.trim().length > 160) {
+    return res.status(400).json({ error: "Тема листа має містити від 2 до 160 символів" });
+  }
+  if (/[\r\n]/.test(subject)) return res.status(400).json({ error: "Тема листа не може містити переноси рядків" });
+  if (typeof message !== "string" || message.trim().length < 2 || message.trim().length > 10000) {
+    return res.status(400).json({ error: "Текст листа має містити від 2 до 10 000 символів" });
+  }
+  if (!["all", "selected"].includes(audience)) {
+    return res.status(400).json({ error: "Оберіть отримувачів" });
+  }
+  if (!isSmtpConfigured()) {
+    return res.status(503).json({ error: "Налаштуйте SMTP_USER і SMTP_PASS, щоб надсилати розсилки" });
+  }
+  const ids = Array.isArray(subscriberIds) ? [...new Set(subscriberIds.map(Number).filter(Number.isInteger))] : [];
+  if (audience === "selected" && !ids.length) {
+    return res.status(400).json({ error: "Оберіть хоча б одного активного підписника" });
+  }
+  const query = audience === "all"
+    ? { text: "SELECT id, email, unsubscribe_token FROM newsletter_subscribers WHERE is_active = TRUE", values: [] }
+    : { text: "SELECT id, email, unsubscribe_token FROM newsletter_subscribers WHERE is_active = TRUE AND id = ANY($1::int[])", values: [ids] };
+  const { rows: subscribers } = await pool.query(query);
+  if (!subscribers.length) return res.status(400).json({ error: "Немає активних підписників для надсилання" });
+
+  const result = await sendNewsletterMessage({ subject: subject.trim(), message: message.trim(), subscribers });
+  await audit(req, "Надіслав розсилку", "newsletter", null, {
+    audience,
+    requested: subscribers.length,
+    sent: result.sent,
+    failed: result.failed.length,
+    subject: subject.trim(),
+  });
+  res.json({ requested: subscribers.length, ...result });
 }));
 
 adminRouter.get("/categories", requireAdmin, asyncHandler(async (_req, res) => {
