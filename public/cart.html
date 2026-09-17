@@ -6,10 +6,19 @@
     <title>Кошик — iCore Store</title>
     <link rel="stylesheet" href="/css/style.css" />
   </head>
-  <body>
+  <body class="cart-page">
     <div id="nav"></div>
-    <main class="wrap">
-      <h1 class="section-title">Кошик</h1>
+    <main class="wrap cart-wrap">
+      <div class="cart-page-head">
+        <div>
+          <p class="cart-kicker">iCore Store</p>
+          <h1 class="cart-title">Ваш кошик</h1>
+          <p class="cart-intro">Техніка, яку ви обрали — майже ваша.</p>
+        </div>
+        <a class="cart-continue" href="/#catalog">
+          <span aria-hidden="true">←</span> Продовжити покупки
+        </a>
+      </div>
       <div id="cart"></div>
     </main>
     <script type="module" src="/js/cart.js"></script>
