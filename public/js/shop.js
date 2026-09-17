@@ -2,6 +2,16 @@ import { api, formatPrice, addToCart, mountNav, toast } from "./api.js";
 
 await mountNav();
 
+const revealObserver = new IntersectionObserver((entries) => {
+  entries.forEach((entry) => {
+    if (entry.isIntersecting) {
+      entry.target.classList.add("visible");
+      revealObserver.unobserve(entry.target);
+    }
+  });
+}, { threshold: 0.12 });
+document.querySelectorAll(".reveal-on-scroll").forEach((el) => revealObserver.observe(el));
+
 const productsEl = document.getElementById("products");
 const chipsEl = document.getElementById("category-chips");
 const searchEl = document.getElementById("search");
@@ -36,6 +46,15 @@ async function load() {
     productsEl.innerHTML = products.length
       ? products.map(card).join("")
       : `<div class="empty">Нічого не знайдено</div>`;
+    productsEl.querySelectorAll(".card").forEach((el, index) => {
+      el.style.opacity = "0";
+      el.style.transform = "translateY(14px)";
+      requestAnimationFrame(() => {
+        el.style.transition = `opacity .4s ease ${Math.min(index * 45, 260)}ms, transform .4s ease ${Math.min(index * 45, 260)}ms`;
+        el.style.opacity = "1";
+        el.style.transform = "none";
+      });
+    });
   } catch (error) {
     productsEl.innerHTML = `<div class="empty">${error.message}</div>`;
   }

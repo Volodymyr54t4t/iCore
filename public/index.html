@@ -8,17 +8,50 @@
   </head>
   <body>
     <div id="nav"></div>
-    <section class="hero">
-      <h1>iPhone 16 Pro</h1>
-      <p>Титан. Камера. Чип A18 Pro.</p>
-      <a class="btn" href="/product.html?slug=iphone-16-pro">Купити</a>
-      <div class="hero-art">
+    <section class="hero hero-home">
+      <div class="hero-glow hero-glow-left"></div>
+      <div class="hero-glow hero-glow-right"></div>
+      <div class="hero-copy reveal">
+        <p class="eyebrow"><span></span> Нове покоління вже тут</p>
+        <h1>Твій наступний<br /><i>рівень.</i></h1>
+        <p class="hero-lead">iPhone 16 Pro. Титанова міцність, система камер Pro і неймовірна швидкість A18 Pro.</p>
+        <div class="hero-actions">
+          <a class="btn btn-light" href="/product.html?slug=iphone-16-pro">Обрати iPhone <b>→</b></a>
+          <a class="text-link" href="#catalog">Переглянути каталог <span>↓</span></a>
+        </div>
+        <div class="hero-proof">
+          <div><b>12 міс.</b><small>гарантії</small></div>
+          <div><b>1–2 дні</b><small>доставка Україною</small></div>
+          <div><b>0%</b><small>розстрочка</small></div>
+        </div>
+      </div>
+      <div class="hero-art reveal reveal-delay">
+        <div class="hero-orbit orbit-one"></div><div class="hero-orbit orbit-two"></div>
         <img src="https://images.unsplash.com/photo-1695048133142-1a20484d2569?auto=format&fit=crop&w=1600&q=80" alt="iPhone 16 Pro" />
+        <div class="hero-spec"><span>48 MP</span><small>Fusion camera</small></div>
       </div>
     </section>
+    <section class="service-strip" aria-label="Переваги iCore">
+      <div><span class="service-icon">✦</span><p><b>Лише оригінальна техніка</b><small>Перевіряємо кожен пристрій</small></p></div>
+      <div><span class="service-icon">◌</span><p><b>Вигідна оплата</b><small>Частинами без переплат</small></p></div>
+      <div><span class="service-icon">↗</span><p><b>Швидко відправляємо</b><small>У день підтвердження</small></p></div>
+      <div><span class="service-icon">♡</span><p><b>Турбота після покупки</b><small>Підтримка від iCore</small></p></div>
+    </section>
+    <section class="spotlight wrap reveal-on-scroll">
+      <div class="spotlight-copy">
+        <p class="eyebrow dark"><span></span> Вибір iCore</p>
+        <h2>Технології, що<br />відчуваються <em>твоїми.</em></h2>
+        <p>Підібрали пристрої, які легко стають частиною щоденних планів, творчості та великих ідей.</p>
+        <a class="text-link blue-link" href="#catalog">Знайти свій пристрій <span>→</span></a>
+      </div>
+      <a class="feature-tile feature-phone" href="/#iphone"><span class="tile-label">iPhone</span><b>Професійний.<br />По-твоєму.</b><img src="https://images.unsplash.com/photo-1592750475338-74b7b21085ab?auto=format&fit=crop&w=850&q=85" alt="iPhone" /></a>
+      <a class="feature-tile feature-mac" href="/#mac"><span class="tile-label">MacBook</span><b>Легкий. Потужний.<br />Твій.</b><img src="https://images.unsplash.com/photo-1517336714731-489689fd1ca8?auto=format&fit=crop&w=850&q=85" alt="MacBook" /></a>
+    </section>
     <main class="wrap" id="catalog">
-      <h2 class="section-title">Каталог Apple</h2>
-      <p class="muted">Офіційні моделі з гарантією 12 місяців. Доставка по Україні.</p>
+      <div class="catalog-heading reveal-on-scroll">
+        <div><p class="eyebrow dark"><span></span> Обирай своє</p><h2 class="section-title">Каталог Apple</h2></div>
+        <p class="muted">Нові враження починаються з правильної техніки.</p>
+      </div>
       <div class="filters">
         <button class="chip active" data-category="">Усе</button>
         <div id="category-chips"></div>
@@ -32,7 +65,7 @@
       </div>
       <div class="grid" id="products"></div>
     </main>
-    <footer class="footer">iCore Store · не є офіційним магазином Apple · демо-проєкт · <a href="/admin/login.html">Адмін</a></footer>
+    <footer class="footer"><a class="footer-logo" href="/"> iCore</a><p>Техніка для тих, хто не зупиняється.</p><span>iCore Store · не є офіційним магазином Apple · <a href="/admin/login.html">Адмін</a></span></footer>
     <script type="module" src="/js/shop.js"></script>
   </body>
 </html>
