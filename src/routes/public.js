@@ -4,6 +4,10 @@ import { asyncHandler } from "../utils/async.js";
 import { createOrder } from "../services/orders.js";
 import { notifyNewOrder } from "../telegram/bot.js";
 import { readCustomer } from "../middleware/auth.js";
+import { logActivity } from "../services/activity.js";
+import { mkdir, writeFile } from "node:fs/promises";
+import path from "node:path";
+import crypto from "node:crypto";
 
 export const publicRouter = Router();
 
@@ -91,8 +95,71 @@ publicRouter.post("/orders", asyncHandler(async (req, res) => {
       customerId: customer?.id || null,
     });
     notifyNewOrder(order).catch((error) => console.error("Telegram notify:", error.message));
-    res.status(201).json({ id: order.id, total: order.total, account: Boolean(customer) });
+    res.status(201).json({
+      id: order.id,
+      total: order.total,
+      paymentAmount: order.paymentAmount,
+      receipt: order.receipt,
+      paymentUrl: `/payment.html?order=${order.id}&token=${order.paymentToken}`,
+      account: Boolean(customer),
+    });
   } catch (error) {
     res.status(400).json({ error: error.message || "Не вдалося оформити замовлення" });
   }
+}));
+
+async function paymentOrder(id, token) {
+  const { rows } = await pool.query(
+    `SELECT id, total, status, payment_status, payment_provider, payment_amount, payment_receipt,
+            payment_proof_url, payment_proof_at, payment_token
+     FROM orders WHERE id = $1 AND payment_token = $2`,
+    [id, token]
+  );
+  return rows[0] || null;
+}
+
+publicRouter.get("/orders/:id/payment", asyncHandler(async (req, res) => {
+  const order = await paymentOrder(req.params.id, req.query.token);
+  if (!order) return res.status(404).json({ error: "Рахунок не знайдено або посилання більше не дійсне" });
+  res.json({
+    id: order.id,
+    total: order.total,
+    status: order.status,
+    paymentStatus: order.payment_status,
+    provider: order.payment_provider,
+    paymentAmount: order.payment_amount,
+    receipt: order.payment_receipt,
+    proofUrl: order.payment_proof_url,
+    proofAt: order.payment_proof_at,
+  });
+}));
+
+publicRouter.patch("/orders/:id/payment-method", asyncHandler(async (req, res) => {
+  const { token, provider } = req.body || {};
+  if (!["monobank", "privatbank"].includes(provider)) return res.status(400).json({ error: "Оберіть банк для передоплати" });
+  const order = await paymentOrder(req.params.id, token);
+  if (!order) return res.status(404).json({ error: "Рахунок не знайдено" });
+  if (order.payment_status === "proof_submitted" || order.payment_status === "confirmed") return res.status(400).json({ error: "Підтвердження оплати вже надіслано" });
+  await pool.query("UPDATE orders SET payment_provider = $1 WHERE id = $2", [provider, order.id]);
+  res.json({ ok: true, provider });
+}));
+
+publicRouter.post("/orders/:id/payment-proof", asyncHandler(async (req, res) => {
+  const { token, dataUrl } = req.body || {};
+  const order = await paymentOrder(req.params.id, token);
+  if (!order) return res.status(404).json({ error: "Рахунок не знайдено" });
+  if (!order.payment_provider) return res.status(400).json({ error: "Спершу оберіть банк" });
+  const match = String(dataUrl || "").match(/^data:image\/(png|jpe?g|webp);base64,([a-zA-Z0-9+/=]+)$/);
+  if (!match) return res.status(400).json({ error: "Прикріпіть скрін у форматі PNG, JPG або WebP" });
+  const data = Buffer.from(match[2], "base64");
+  if (!data.length || data.length > 5 * 1024 * 1024) return res.status(400).json({ error: "Розмір скріну має бути до 5 МБ" });
+  const ext = match[1] === "jpeg" ? "jpg" : match[1];
+  const name = `payment-${order.id}-${Date.now()}-${crypto.randomBytes(5).toString("hex")}.${ext}`;
+  const dir = path.resolve(process.cwd(), "public/uploads/payments");
+  await mkdir(dir, { recursive: true });
+  await writeFile(path.join(dir, name), data, { flag: "wx" });
+  const url = `/uploads/payments/${name}`;
+  await pool.query("UPDATE orders SET payment_proof_url=$1, payment_proof_at=NOW(), payment_status='proof_submitted' WHERE id=$2", [url, order.id]);
+  await logActivity({ actorType: "guest", actorName: `Замовлення #${order.id}`, action: "Надіслав скрін передоплати", entityType: "order", entityId: order.id, details: { paymentAmount: order.payment_amount } });
+  res.status(201).json({ ok: true, proofUrl: url });
 }));

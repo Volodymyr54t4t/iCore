@@ -377,6 +377,13 @@ export async function initDatabase() {
     "customer_id",
     "customer_id INTEGER REFERENCES customers(id) ON DELETE SET NULL"
   );
+  await ensureColumn("orders", "payment_status", "payment_status TEXT NOT NULL DEFAULT 'awaiting_payment'");
+  await ensureColumn("orders", "payment_provider", "payment_provider TEXT NOT NULL DEFAULT ''");
+  await ensureColumn("orders", "payment_amount", "payment_amount INTEGER NOT NULL DEFAULT 0");
+  await ensureColumn("orders", "payment_receipt", "payment_receipt TEXT NOT NULL DEFAULT ''");
+  await ensureColumn("orders", "payment_token", "payment_token TEXT NOT NULL DEFAULT md5(random()::text || clock_timestamp()::text)");
+  await ensureColumn("orders", "payment_proof_url", "payment_proof_url TEXT NOT NULL DEFAULT ''");
+  await ensureColumn("orders", "payment_proof_at", "payment_proof_at TIMESTAMPTZ");
 
   const email = process.env.ADMIN_EMAIL || "admin@icore.store";
   const password = process.env.ADMIN_PASSWORD || "Admin123!";

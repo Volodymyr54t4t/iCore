@@ -43,11 +43,9 @@ if (!cart.length) {
     try {
       const order = await api("/api/orders", { method: "POST", body: payload });
       saveCart([]);
-      const extra = order.account
-        ? `<a class="btn" href="/account.html">До кабінету</a>`
-        : `<a class="btn ghost" href="/register.html?next=/account.html">Створити кабінет</a>`;
-      root.innerHTML = `<div class="empty"><h2>Дякуємо!</h2><p>Замовлення №${order.id} прийнято. Сума ${formatPrice(order.total)}.</p><div class="row" style="justify-content:center;margin-top:16px"><a class="btn" href="/">На головну</a>${extra}</div></div>`;
-      toast("Замовлення оформлено");
+      root.innerHTML = `<div class="empty"><h2>Замовлення №${order.id} оформлено</h2><p>Зараз сформуємо рахунок на передоплату <b>${formatPrice(order.paymentAmount)}</b>.</p></div>`;
+      toast("Переходимо до передоплати");
+      setTimeout(() => { location.href = order.paymentUrl; }, 450);
     } catch (error) {
       document.getElementById("error").textContent = error.message;
     }

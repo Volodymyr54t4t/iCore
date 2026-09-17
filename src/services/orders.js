@@ -1,5 +1,6 @@
 import { pool } from "../db/pool.js";
 import { logActivity } from "./activity.js";
+import crypto from "node:crypto";
 
 export async function createOrder({
   name,
@@ -35,10 +36,12 @@ export async function createOrder({
       lines.push({ product, qty });
     }
 
+    const paymentToken = crypto.randomBytes(24).toString("hex");
+    const paymentAmount = Math.ceil(total / 2);
     const orderResult = await client.query(
       `INSERT INTO orders
-        (customer_name, customer_phone, customer_email, city, address, notes, total, telegram_chat_id, customer_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+        (customer_name, customer_phone, customer_email, city, address, notes, total, telegram_chat_id, customer_id, payment_status, payment_amount, payment_token)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'awaiting_payment',$10,$11) RETURNING *`,
       [
         name.trim(),
         phone.trim(),
@@ -49,9 +52,14 @@ export async function createOrder({
         total,
         telegramChatId,
         customerId,
+        paymentAmount,
+        paymentToken,
       ]
     );
     const order = orderResult.rows[0];
+    const receipt = `IC-${String(order.id).padStart(6, "0")}`;
+    await client.query("UPDATE orders SET payment_receipt = $1 WHERE id = $2", [receipt, order.id]);
+    order.payment_receipt = receipt;
 
     if (customerId) {
       await client.query(
@@ -81,12 +89,12 @@ export async function createOrder({
       action: "Створив замовлення",
       entityType: "order",
       entityId: order.id,
-      details: { total, items: lines.length },
+      details: { total, paymentAmount, items: lines.length },
       db: client,
     });
 
     await client.query("COMMIT");
-    return { ...order, items: lines.map((l) => ({ name: l.product.name, qty: l.qty, price: l.product.price })) };
+    return { ...order, paymentAmount, paymentToken, receipt, items: lines.map((l) => ({ name: l.product.name, qty: l.qty, price: l.product.price })) };
   } catch (error) {
     try {
       await client.query("ROLLBACK");

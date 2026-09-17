@@ -40,6 +40,9 @@ function renderOrders() {
         .join("");
       const canRepeat = (o.items || []).some((i) => i.productId && i.slug);
       const canCancel = o.status === "new";
+      const paymentAction = o.payment_status !== "proof_submitted" && o.payment_status !== "confirmed" && o.payment_token
+        ? `<a class="btn" href="/payment.html?order=${o.id}&token=${encodeURIComponent(o.payment_token)}">Передоплата 50%</a>`
+        : o.payment_status === "proof_submitted" ? `<span class="status-pill status-processing">Скрін передоплати перевіряється</span>` : "";
       return `
         <article class="order-card">
           <div class="order-head">
@@ -53,6 +56,7 @@ function renderOrders() {
           <p class="muted">${o.city}, ${o.address}${o.notes ? ` · ${o.notes}` : ""}</p>
           <ul>${items}</ul>
           <div class="row">
+            ${paymentAction}
             ${canRepeat ? `<button class="btn ghost" data-repeat="${o.id}">Повторити</button>` : ""}
             ${canCancel ? `<button class="btn danger" data-cancel="${o.id}">Скасувати</button>` : ""}
           </div>
