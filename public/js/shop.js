@@ -19,16 +19,27 @@ const sortEl = document.getElementById("sort");
 let category = "";
 
 function card(p) {
+  const discount = p.oldPrice && p.oldPrice > p.price
+    ? Math.round((1 - p.price / p.oldPrice) * 100)
+    : 0;
   return `
-    <article class="card">
-      <a href="/product.html?slug=${p.slug}"><img src="${p.imageUrl}" alt="${p.name}" /></a>
+    <article class="card product-card">
+      <div class="product-card-media">
+        <a href="/product.html?slug=${p.slug}" aria-label="Переглянути ${p.name}"><img src="${p.imageUrl}" alt="${p.name}" /></a>
+        <div class="product-card-badges">
+          <span class="product-category">${p.category.name}</span>
+          ${discount ? `<span class="product-discount">−${discount}%</span>` : ""}
+        </div>
+        <a class="product-card-open" href="/product.html?slug=${p.slug}" aria-label="Деталі ${p.name}"><span>↗</span></a>
+      </div>
       <div class="card-body">
+        <div class="product-card-meta"><span>${p.stock > 0 ? "В наявності" : "Під замовлення"}</span><i></i><span>Офіційна гарантія</span></div>
         <h3><a href="/product.html?slug=${p.slug}">${p.name}</a></h3>
         <div class="tagline">${p.tagline}</div>
-        <div class="price">${formatPrice(p.price)}${p.oldPrice ? `<span class="old">${formatPrice(p.oldPrice)}</span>` : ""}</div>
+        <div class="price"><span>${formatPrice(p.price)}</span>${p.oldPrice ? `<span class="old">${formatPrice(p.oldPrice)}</span>` : ""}</div>
         <div class="row">
-          <button class="btn" data-add="${p.id}">У кошик</button>
-          <a class="btn ghost" href="/product.html?slug=${p.slug}">Деталі</a>
+          <button class="btn" data-add="${p.id}">У кошик <span>+</span></button>
+          <a class="btn ghost" href="/product.html?slug=${p.slug}">Детальніше <span>→</span></a>
         </div>
       </div>
     </article>

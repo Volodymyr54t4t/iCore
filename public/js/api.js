@@ -133,5 +133,33 @@ export async function mountNav() {
   const me = await getCustomer();
   host.innerHTML = nav(me);
   updateCartBadge();
+  await applySiteContent();
   return me;
+}
+
+async function applySiteContent() {
+  try {
+    const response = await fetch(`/api/content?path=${encodeURIComponent(location.pathname)}`);
+    if (!response.ok) return;
+    const blocks = await response.json();
+    for (const block of blocks) {
+      let elements;
+      try { elements = document.querySelectorAll(block.selector); } catch { continue; }
+      elements.forEach((element) => {
+        if (block.property === "text") {
+          const fragment = document.createDocumentFragment();
+          String(block.value).split(/\r?\n/).forEach((line, index) => {
+            if (index) fragment.append(document.createElement("br"));
+            fragment.append(document.createTextNode(line));
+          });
+          element.replaceChildren(fragment);
+        }
+        if (block.property === "image") element.src = block.value;
+        if (block.property === "link") element.href = block.value;
+        if (block.property === "background") element.style.backgroundImage = `url("${block.value.replaceAll('"', "%22")}")`;
+      });
+    }
+  } catch {
+    // Keep the embedded storefront content when the CMS cannot be reached.
+  }
 }

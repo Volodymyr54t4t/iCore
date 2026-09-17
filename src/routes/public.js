@@ -71,6 +71,16 @@ publicRouter.get("/categories", asyncHandler(async (_req, res) => {
   res.json(rows);
 }));
 
+publicRouter.get("/content", asyncHandler(async (req, res) => {
+  const page = String(req.query.path || "/");
+  if (!/^\/[a-z0-9._/-]*$/i.test(page) || page.length > 120) return res.status(400).json({ error: "Некоректна сторінка" });
+  const { rows } = await pool.query(
+    "SELECT selector, property, value FROM site_content WHERE path = $1 ORDER BY id",
+    [page]
+  );
+  res.json(rows);
+}));
+
 publicRouter.post("/contact", asyncHandler(async (req, res) => {
   const { name, email, phone, topic, message, website } = req.body || {};
   if (website) return res.status(201).json({ ok: true }); // Honeypot for automated submissions.

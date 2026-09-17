@@ -128,6 +128,37 @@ adminRouter.get("/newsletter-subscribers", requireAdmin, asyncHandler(async (_re
   res.json(rows);
 }));
 
+adminRouter.get("/content", requireAdmin, asyncHandler(async (_req, res) => {
+  const { rows } = await pool.query("SELECT * FROM site_content ORDER BY path, id");
+  res.json(rows);
+}));
+
+adminRouter.post("/content", requireAdmin, asyncHandler(async (req, res) => {
+  const { path, selector, property, value, label = "" } = req.body || {};
+  if (typeof path !== "string" || !/^\/[a-z0-9._/-]*$/i.test(path) || path.length > 120) return res.status(400).json({ error: "Вкажіть коректний шлях сторінки" });
+  if (typeof selector !== "string" || !selector.trim() || selector.length > 300) return res.status(400).json({ error: "Вкажіть елемент сторінки" });
+  if (!["text", "image", "link", "background"].includes(property)) return res.status(400).json({ error: "Оберіть тип вмісту" });
+  if (typeof value !== "string" || !value.trim() || value.length > 10000) return res.status(400).json({ error: "Вкажіть значення для блоку" });
+  if (property !== "text" && !/^(https?:\/\/|\/)/.test(value.trim())) return res.status(400).json({ error: "Для посилання або зображення використайте URL чи шлях від /" });
+  try {
+    const { rows } = await pool.query(`INSERT INTO site_content (path, selector, property, value, label)
+      VALUES ($1,$2,$3,$4,$5)
+      ON CONFLICT (path, selector, property) DO UPDATE SET value=EXCLUDED.value, label=EXCLUDED.label, updated_at=NOW()
+      RETURNING *`, [path, selector.trim(), property, value.trim(), String(label).trim().slice(0, 160)]);
+    await audit(req, "Оновив вміст сайту", "site_content", rows[0].id, { path, label: rows[0].label || selector });
+    res.status(201).json(rows[0]);
+  } catch (error) {
+    res.status(400).json({ error: "Не вдалося зберегти блок. Перевірте селектор." });
+  }
+}));
+
+adminRouter.delete("/content/:id", requireAdmin, asyncHandler(async (req, res) => {
+  const { rowCount } = await pool.query("DELETE FROM site_content WHERE id = $1", [req.params.id]);
+  if (!rowCount) return res.status(404).json({ error: "Блок не знайдено" });
+  await audit(req, "Скинув вміст сайту", "site_content", Number(req.params.id));
+  res.json({ ok: true });
+}));
+
 adminRouter.post("/newsletter/send", requireAdmin, asyncHandler(async (req, res) => {
   const { subject, message, audience, subscriberIds } = req.body || {};
   if (typeof subject !== "string" || subject.trim().length < 2 || subject.trim().length > 160) {

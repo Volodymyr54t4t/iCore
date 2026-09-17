@@ -107,9 +107,22 @@ CREATE TABLE IF NOT EXISTS newsletter_subscribers (
   unsubscribed_at TIMESTAMPTZ
 );
 
+CREATE TABLE IF NOT EXISTS site_content (
+  id SERIAL PRIMARY KEY,
+  path TEXT NOT NULL,
+  selector TEXT NOT NULL,
+  property TEXT NOT NULL DEFAULT 'text',
+  value TEXT NOT NULL DEFAULT '',
+  label TEXT NOT NULL DEFAULT '',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(path, selector, property)
+);
+
 CREATE INDEX IF NOT EXISTS activity_log_created_at_idx ON activity_log (created_at DESC);
 CREATE INDEX IF NOT EXISTS activity_log_actor_idx ON activity_log (actor_type, actor_id);
 CREATE INDEX IF NOT EXISTS newsletter_subscribers_active_idx ON newsletter_subscribers (is_active);
+CREATE INDEX IF NOT EXISTS site_content_path_idx ON site_content (path);
 `;
 
 async function ensureColumn(table, column, definition) {
