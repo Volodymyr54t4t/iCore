@@ -117,6 +117,7 @@ export function nav(me = null) {
           <a href="/#iphone">iPhone</a>
           <a href="/#mac">Mac</a>
           <a href="/#watch">Watch</a>
+          <a href="/about.html">Про iCore</a>
         </nav>
         <div class="nav-spacer"></div>
         ${account}

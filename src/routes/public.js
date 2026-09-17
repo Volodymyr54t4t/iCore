@@ -8,8 +8,21 @@ import { logActivity } from "../services/activity.js";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import crypto from "node:crypto";
+import { sendContactMail } from "../services/contactMail.js";
 
 export const publicRouter = Router();
+
+const contactAttempts = new Map();
+
+function allowContactRequest(ip) {
+  const now = Date.now();
+  const windowMs = 15 * 60 * 1000;
+  const attempts = (contactAttempts.get(ip) || []).filter((time) => now - time < windowMs);
+  if (attempts.length >= 5) return false;
+  attempts.push(now);
+  contactAttempts.set(ip, attempts);
+  return true;
+}
 
 function mapProduct(row) {
   return {
@@ -44,6 +57,24 @@ publicRouter.get("/categories", asyncHandler(async (_req, res) => {
     "SELECT id, slug, name FROM categories ORDER BY sort_order, id"
   );
   res.json(rows);
+}));
+
+publicRouter.post("/contact", asyncHandler(async (req, res) => {
+  const { name, email, phone, topic, message, website } = req.body || {};
+  if (website) return res.status(201).json({ ok: true }); // Honeypot for automated submissions.
+  if (!allowContactRequest(req.ip)) return res.status(429).json({ error: "Забагато звернень. Спробуйте ще раз трохи пізніше." });
+  if (typeof name !== "string" || name.trim().length < 2 || name.length > 100) return res.status(400).json({ error: "Вкажіть ваше ім’я" });
+  if (typeof email !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 150) return res.status(400).json({ error: "Вкажіть коректний email" });
+  if (typeof topic !== "string" || topic.trim().length < 2 || topic.length > 100) return res.status(400).json({ error: "Оберіть тему звернення" });
+  if (typeof message !== "string" || message.trim().length < 10 || message.length > 3000) return res.status(400).json({ error: "Повідомлення має містити від 10 до 3000 символів" });
+  if (phone && (typeof phone !== "string" || phone.length > 40)) return res.status(400).json({ error: "Перевірте номер телефону" });
+  try {
+    await sendContactMail({ name: name.trim(), email: email.trim(), phone: String(phone || "").trim(), topic: topic.trim(), message: message.trim() });
+    res.status(201).json({ ok: true });
+  } catch (error) {
+    console.error("Contact mail:", error.message);
+    res.status(503).json({ error: "Не вдалося надіслати повідомлення. Спробуйте ще раз або зателефонуйте нам." });
+  }
 }));
 
 publicRouter.get("/products", asyncHandler(async (req, res) => {
