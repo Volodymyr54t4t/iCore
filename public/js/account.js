@@ -28,7 +28,7 @@ function stats() {
 
 function renderOrders() {
   if (!orders.length) {
-    return `<div class="empty">Замовлень ще немає. <a href="/">До каталогу</a></div>`;
+    return `<div class="account-empty"><div class="account-empty-icon">□</div><h2>Ще немає замовлень</h2><p>Саме час обрати свою наступну техніку Apple.</p><a class="btn" href="/#catalog">До каталогу <span>→</span></a></div>`;
   }
   return orders
     .map((o) => {
@@ -44,18 +44,18 @@ function renderOrders() {
         ? `<a class="btn" href="/payment.html?order=${o.id}&token=${encodeURIComponent(o.payment_token)}">Передоплата 50%</a>`
         : o.payment_status === "proof_submitted" ? `<span class="status-pill status-processing">Скрін передоплати перевіряється</span>` : "";
       return `
-        <article class="order-card">
+        <article class="order-card account-order-card">
           <div class="order-head">
             <div>
-              <b>№${o.id}</b>
+              <p class="order-number">Замовлення №${o.id}</p>
               <span class="status-pill status-${o.status}">${STATUS[o.status] || o.status}</span>
-              <div class="muted">${when(o.created_at)}</div>
+              <div class="order-date">${when(o.created_at)}</div>
             </div>
-            <div class="price">${formatPrice(o.total)}</div>
+            <div class="order-total"><span>Разом</span><b>${formatPrice(o.total)}</b></div>
           </div>
-          <p class="muted">${o.city}, ${o.address}${o.notes ? ` · ${o.notes}` : ""}</p>
-          <ul>${items}</ul>
-          <div class="row">
+          <div class="order-meta"><span>⌖ ${o.city}, ${o.address}</span>${o.notes ? `<span>· ${o.notes}</span>` : ""}</div>
+          <ul class="order-items">${items}</ul>
+          <div class="order-actions">
             ${paymentAction}
             ${canRepeat ? `<button class="btn ghost" data-repeat="${o.id}">Повторити</button>` : ""}
             ${canCancel ? `<button class="btn danger" data-cancel="${o.id}">Скасувати</button>` : ""}
@@ -67,42 +67,46 @@ function renderOrders() {
 
 function renderProfile() {
   return `
-    <form class="form" id="profile-form">
-      <input name="name" required placeholder="Імʼя та прізвище" value="${me.name || ""}" />
-      <input name="phone" placeholder="Телефон" value="${me.phone || ""}" />
-      <input value="${me.email}" disabled />
-      <input name="city" placeholder="Місто" value="${me.city || ""}" />
-      <input name="address" placeholder="Адреса / відділення НП" value="${me.address || ""}" />
-      <button class="btn">Зберегти дані</button>
-      <div class="error" id="profile-error"></div>
-    </form>
-    <h3>Пароль</h3>
-    <form class="form" id="password-form">
-      <input name="currentPassword" type="password" required placeholder="Поточний пароль" />
-      <input name="newPassword" type="password" required minlength="6" placeholder="Новий пароль" />
-      <button class="btn ghost">Змінити пароль</button>
-      <div class="error" id="password-error"></div>
-    </form>
+    <div class="profile-layout">
+      <section class="profile-card">
+        <div class="profile-card-head"><div><p class="account-kicker">Особисті дані</p><h2>Контактна інформація</h2></div><span class="profile-card-icon">●</span></div>
+        <form class="profile-form" id="profile-form">
+          <label class="profile-field"><span>Ім’я та прізвище</span><input name="name" required value="${me.name || ""}" /></label>
+          <label class="profile-field"><span>Телефон</span><input name="phone" placeholder="+380" value="${me.phone || ""}" /></label>
+          <label class="profile-field profile-field-wide"><span>Електронна пошта</span><input value="${me.email}" disabled /></label>
+          <label class="profile-field"><span>Місто</span><input name="city" placeholder="Київ" value="${me.city || ""}" /></label>
+          <label class="profile-field"><span>Адреса / відділення НП</span><input name="address" placeholder="Вкажіть адресу" value="${me.address || ""}" /></label>
+          <div class="profile-form-footer"><div class="error" id="profile-error"></div><button class="btn">Зберегти зміни <span>→</span></button></div>
+        </form>
+      </section>
+      <section class="password-card">
+        <p class="account-kicker">Безпека</p><h2>Оновити пароль</h2><p>Регулярно оновлюйте пароль, щоб захистити свій акаунт.</p>
+        <form class="password-form" id="password-form">
+          <label class="profile-field"><span>Поточний пароль</span><input name="currentPassword" type="password" required /></label>
+          <label class="profile-field"><span>Новий пароль</span><input name="newPassword" type="password" required minlength="6" /></label>
+          <button class="btn ghost">Змінити пароль</button><div class="error" id="password-error"></div>
+        </form>
+      </section>
+    </div>
   `;
 }
 
 function render() {
   const s = stats();
   root.innerHTML = `
-    <div class="account-head">
-      <div>
-        <h1 class="section-title">Вітаємо, ${me.name}</h1>
-        <p class="muted">${me.email}</p>
-      </div>
-      <button class="btn ghost" id="logout">Вийти</button>
+    <section class="account-hero">
+      <div class="account-hero-copy"><p class="account-kicker">Особистий простір</p><h1>Вітаємо, ${me.name || "друже"}.</h1><p>${me.email}</p></div>
+      <div class="account-avatar" aria-hidden="true">${(me.name || "I").trim().charAt(0).toUpperCase()}</div>
+      <button class="account-logout" id="logout">Вийти <span>↗</span></button>
+    </section>
+    <div class="account-stats">
+      <div class="stat-card"><span>Усього замовлень</span><b>${s.count}</b><small>за весь час</small></div>
+      <div class="stat-card"><span>Ваші покупки</span><b>${formatPrice(s.spent)}</b><small>без скасованих</small></div>
+      <div class="stat-card stat-card-accent"><span>iCore клієнт</span><b>●</b><small>Дякуємо, що ви з нами</small></div>
     </div>
-    <div class="cards account-stats">
-      <div class="stat-card"><span>Замовлень</span><b>${s.count}</b></div>
-      <div class="stat-card"><span>Витрачено</span><b>${formatPrice(s.spent)}</b></div>
-    </div>
-    <div class="auth-tabs">
+    <div class="account-tabs">
       <button class="chip ${tab === "orders" ? "active" : ""}" data-account-tab="orders">Замовлення</button>
-      <button class="chip ${tab === "profile" ? "active" : ""}" data-account-tab="profile">Профіль і доставка</button>
+      <button class="chip ${tab === "profile" ? "active" : ""}" data-account-tab="profile">Профіль і доставка <span>→</span></button>
     </div>
     <div id="tab">${tab === "orders" ? renderOrders() : renderProfile()}</div>
   `;

@@ -46,6 +46,28 @@ export function addToCart(product, quantity = 1) {
   saveCart(cart);
 }
 
+export function showCartConfirmation(product, quantity = 1) {
+  document.querySelector(".cart-feedback")?.remove();
+  const feedback = document.createElement("aside");
+  feedback.className = "cart-feedback";
+  feedback.setAttribute("role", "status");
+  feedback.innerHTML = `
+    <div class="cart-feedback-mark">✓</div>
+    ${product.imageUrl ? `<img src="${product.imageUrl}" alt="" />` : ""}
+    <div class="cart-feedback-copy"><b>Додано до кошика</b><span>${product.name} · ${quantity} шт.</span></div>
+    <a href="/cart.html">Переглянути <span>→</span></a>
+    <button type="button" aria-label="Закрити повідомлення">×</button>
+  `;
+  document.body.appendChild(feedback);
+  requestAnimationFrame(() => feedback.classList.add("is-visible"));
+  const close = () => {
+    feedback.classList.remove("is-visible");
+    setTimeout(() => feedback.remove(), 260);
+  };
+  feedback.querySelector("button").addEventListener("click", close);
+  setTimeout(close, 4800);
+}
+
 export function cartCount() {
   return getCart().reduce((sum, i) => sum + i.quantity, 0);
 }

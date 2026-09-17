@@ -1,4 +1,4 @@
-import { api, formatPrice, addToCart, mountNav, toast } from "./api.js";
+import { api, formatPrice, addToCart, mountNav, showCartConfirmation } from "./api.js";
 
 await mountNav();
 
@@ -86,7 +86,7 @@ productsEl.addEventListener("click", (e) => {
   const product = window.__products.find((p) => String(p.id) === btn.dataset.add);
   if (!product) return;
   addToCart(product, 1);
-  toast("Додано в кошик");
+  showCartConfirmation(product);
 });
 
 await load();

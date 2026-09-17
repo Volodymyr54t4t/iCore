@@ -1,4 +1,4 @@
-import { api, formatPrice, addToCart, mountNav, toast } from "./api.js";
+import { api, formatPrice, addToCart, mountNav, showCartConfirmation } from "./api.js";
 
 await mountNav();
 
@@ -31,7 +31,7 @@ try {
   `;
   document.getElementById("buy")?.addEventListener("click", () => {
     addToCart(p, 1);
-    toast("Додано в кошик");
+    showCartConfirmation(p);
   });
 } catch (error) {
   page.innerHTML = `<div class="empty">${error.message}</div>`;
