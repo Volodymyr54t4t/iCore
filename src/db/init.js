@@ -1,5 +1,6 @@
 import bcrypt from "bcryptjs";
 import { pool } from "./pool.js";
+import { MAC_CATEGORIES, MAC_PRODUCTS } from "./macCatalog.js";
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS admins (
@@ -135,7 +136,7 @@ async function ensureColumn(table, column, definition) {
   }
 }
 
-const CATEGORIES = [
+const LEGACY_CATEGORIES = [
   { slug: "iphone", name: "iPhone", sort_order: 1 },
   { slug: "mac", name: "Mac", sort_order: 2 },
   { slug: "ipad", name: "iPad", sort_order: 3 },
@@ -144,7 +145,7 @@ const CATEGORIES = [
   { slug: "accessories", name: "Аксесуари", sort_order: 6 },
 ];
 
-const PRODUCTS = [
+const LEGACY_PRODUCTS = [
   {
     category: "iphone",
     slug: "iphone-16-pro",
@@ -419,7 +420,14 @@ export async function initDatabase() {
     [email, hash, "Адміністратор iCore"]
   );
 
-  for (const category of CATEGORIES) {
+  // An explicit catalog-replacement run is used only when the assortment changes
+  // completely, so normal application starts never erase products added by an admin.
+  if (process.env.REPLACE_CATALOG === "1") {
+    await pool.query("DELETE FROM products");
+    await pool.query("DELETE FROM categories");
+  }
+
+  for (const category of MAC_CATEGORIES) {
     await pool.query(
       `INSERT INTO categories (slug, name, sort_order)
        VALUES ($1, $2, $3)
@@ -431,7 +439,7 @@ export async function initDatabase() {
   const { rows: cats } = await pool.query("SELECT id, slug FROM categories");
   const catMap = Object.fromEntries(cats.map((c) => [c.slug, c.id]));
 
-  for (const product of PRODUCTS) {
+  for (const product of MAC_PRODUCTS) {
     await pool.query(
       `INSERT INTO products
         (category_id, slug, name, tagline, description, price, old_price, color, storage, stock, image_url, featured)
