@@ -149,13 +149,13 @@ export function nav(me = null) {
   return `
     <header class="nav">
       <div class="nav-inner">
-        <a class="logo" href="/"> iCore <span>Store</span></a>
+        <a class="logo" href="/">CVV <span>Electronics</span></a>
         <nav class="nav-links">
           <a href="/#catalog">Каталог</a>
           <a href="/#iphone">iPhone</a>
           <a href="/#mac">Mac</a>
           <a href="/#watch">Watch</a>
-          <a href="/about.html">Про iCore</a>
+          <a href="/about.html">Про CVV</a>
         </nav>
         <div class="nav-spacer"></div>
         ${account}
