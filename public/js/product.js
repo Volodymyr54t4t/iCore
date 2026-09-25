@@ -9,7 +9,7 @@ try {
   const p = await api("/api/products/" + encodeURIComponent(slug));
   const recent = getRecentProducts().filter((item) => String(item.id) !== String(p.id)).slice(0, 4);
   const discount = p.oldPrice && p.oldPrice > p.price ? Math.round((1 - p.price / p.oldPrice) * 100) : 0;
-  document.title = p.name + " — iCore Store";
+  document.title = p.name + " — CVV ELECTRONICS";
   page.innerHTML = `
     <div class="product-layout">
       <div class="product-photo"><img src="${p.imageUrl}" alt="${p.name}" />${discount ? `<span class="product-page-discount">−${discount}%</span>` : ""}</div>
@@ -45,7 +45,7 @@ try {
     toast(added ? "Додано в обране" : "Прибрано з обраного");
   });
   document.getElementById("share")?.addEventListener("click", async () => {
-    const shareData = { title: p.name, text: `${p.name} — iCore Store`, url: location.href };
+    const shareData = { title: p.name, text: `${p.name} — CVV ELECTRONICS`, url: location.href };
     try {
       if (navigator.share) await navigator.share(shareData);
       else { await navigator.clipboard.writeText(location.href); toast("Посилання скопійовано"); }

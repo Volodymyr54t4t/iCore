@@ -102,7 +102,7 @@ function render() {
     <div class="account-stats">
       <div class="stat-card"><span>Усього замовлень</span><b>${s.count}</b><small>за весь час</small></div>
       <div class="stat-card"><span>Ваші покупки</span><b>${formatPrice(s.spent)}</b><small>без скасованих</small></div>
-      <div class="stat-card stat-card-accent"><span>iCore клієнт</span><b>●</b><small>Дякуємо, що ви з нами</small></div>
+      <div class="stat-card stat-card-accent"><span>Клієнт CVV ELECTRONICS</span><b>●</b><small>Дякуємо, що ви з нами</small></div>
     </div>
     <div class="account-tabs">
       <button class="chip ${tab === "orders" ? "active" : ""}" data-account-tab="orders">Замовлення</button>

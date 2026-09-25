@@ -31,7 +31,7 @@ function render() {
           ${cart.map((i) => `
             <article class="cart-item">
               <a class="cart-item-image" href="/product.html?slug=${i.slug}" aria-label="Переглянути ${i.name}">
-                ${i.imageUrl ? `<img src="${i.imageUrl}" alt="${i.name}" />` : `<span>iCore</span>`}
+                ${i.imageUrl ? `<img src="${i.imageUrl}" alt="${i.name}" />` : `<span>CVV</span>`}
               </a>
               <div class="cart-item-info">
                 <a class="cart-item-name" href="/product.html?slug=${i.slug}">${i.name}</a>
