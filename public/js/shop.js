@@ -23,8 +23,10 @@ let category = "";
 let offset = 0;
 let total = 0;
 let requestId = 0;
-const pageSize = 24;
+let activeProductsController;
+const pageSize = 12;
 const selectedFilters = {};
+const facetCache = new Map();
 
 function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
@@ -40,16 +42,16 @@ function renderFacets(data) {
   facetsEl.hidden = !category;
 }
 
-function card(p) {
+function card(p, index = 0) {
   const discount = p.oldPrice && p.oldPrice > p.price
     ? Math.round((1 - p.price / p.oldPrice) * 100)
     : 0;
   return `
     <article class="card product-card">
       <div class="product-card-media">
-        <a href="/product.html?slug=${p.slug}" aria-label="Переглянути ${p.name}"><img src="${p.imageUrl}" alt="${p.name}" /></a>
+        <a href="/product.html?slug=${encodeURIComponent(p.slug)}" aria-label="Переглянути ${escapeHtml(p.name)}"><img src="${escapeHtml(p.imageUrl || "")}" alt="${escapeHtml(p.name)}" loading="${index < 4 ? "eager" : "lazy"}" decoding="async" /></a>
         <div class="product-card-badges">
-          <span class="product-category">${p.category.name}</span>
+          <span class="product-category">${escapeHtml(p.category.name)}</span>
           ${discount ? `<span class="product-discount">−${discount}%</span>` : ""}
         </div>
         <button class="product-card-favorite ${isFavorite(p.id) ? "is-active" : ""}" type="button" data-favorite="${p.id}" aria-label="${isFavorite(p.id) ? "Прибрати з обраного" : "Додати в обране"}" aria-pressed="${isFavorite(p.id)}">♥</button>
@@ -57,12 +59,12 @@ function card(p) {
       </div>
       <div class="card-body">
         <div class="product-card-meta"><span>${p.isAvailable ? "В наявності" : "Під замовлення"}</span><i></i><span>Офіційна гарантія</span></div>
-        <h3><a href="/product.html?slug=${p.slug}">${p.name}</a></h3>
-        <div class="tagline">${p.tagline}</div>
+        <h3><a href="/product.html?slug=${encodeURIComponent(p.slug)}">${escapeHtml(p.name)}</a></h3>
+        <div class="tagline">${escapeHtml(p.tagline || "")}</div>
         <div class="price"><span>${formatPrice(p.price)}</span>${p.oldPrice ? `<span class="old">${formatPrice(p.oldPrice)}</span>` : ""}</div>
         <div class="row">
           <button class="btn" data-add="${p.id}" ${p.isAvailable ? "" : "disabled"}>${p.isAvailable ? 'У кошик <span>+</span>' : "Тимчасово немає"}</button>
-          <a class="btn ghost" href="/product.html?slug=${p.slug}">Детальніше <span>→</span></a>
+          <a class="btn ghost" href="/product.html?slug=${encodeURIComponent(p.slug)}">Детальніше <span>→</span></a>
         </div>
       </div>
     </article>
@@ -98,10 +100,26 @@ async function renderDeals() {
   } catch { /* Keep the homepage clean when there are no active offers. */ }
 }
 
-renderDeals();
+const scheduleDeals = () => renderDeals();
+if ("requestIdleCallback" in window) requestIdleCallback(scheduleDeals, { timeout: 2500 });
+else setTimeout(scheduleDeals, 900);
+
+function getFacets(slug) {
+  const cached = facetCache.get(slug);
+  if (cached?.data && Date.now() - cached.time < 120_000) return Promise.resolve(cached.data);
+  if (cached?.pending) return cached.pending;
+  const pending = api("/api/products/facets?category=" + encodeURIComponent(slug))
+    .then((data) => { facetCache.set(slug, { data, time: Date.now() }); return data; })
+    .catch((error) => { facetCache.delete(slug); throw error; });
+  facetCache.set(slug, { pending, time: Date.now() });
+  return pending;
+}
 
 async function load({ append = false } = {}) {
   const currentRequest = ++requestId;
+  activeProductsController?.abort();
+  const controller = new AbortController();
+  activeProductsController = controller;
   if (!append) {
     offset = 0;
     productsEl.innerHTML = "";
@@ -116,20 +134,22 @@ async function load({ append = false } = {}) {
   params.set("offset", String(offset));
   for (const [key, value] of Object.entries(selectedFilters)) if (value) params.set(key, value === true ? "1" : value);
   try {
-    const [result, facetData] = await Promise.all([
-      api("/api/products?" + params.toString()),
-      category ? api("/api/products/facets?category=" + encodeURIComponent(category)) : Promise.resolve(null),
-    ]);
+    const facetSlug = category;
+    const facetPromise = facetSlug ? getFacets(facetSlug).catch(() => null) : Promise.resolve(null);
+    const result = await api("/api/products?" + params.toString(), { signal: controller.signal });
     if (currentRequest !== requestId) return;
     const products = result.products || result;
     total = result.total ?? products.length;
     window.__products = append ? [...(window.__products || []), ...products] : products;
     productsEl.insertAdjacentHTML("beforeend", products.length ? products.map(card).join("") : `<div class="empty">Нічого не знайдено</div>`);
-    if (facetData) renderFacets(facetData);
     countEl.textContent = `Показано ${Math.min(offset + products.length, total)} з ${total} товарів`;
     moreEl.hidden = offset + products.length >= total;
+    productsEl.removeAttribute("aria-busy");
+    productsEl.classList.remove("is-loading");
+    const facetData = await facetPromise;
+    if (facetData && currentRequest === requestId && facetSlug === category) renderFacets(facetData);
   } catch (error) {
-    if (currentRequest === requestId) productsEl.innerHTML = `<div class="empty">${error.message}</div>`;
+    if (currentRequest === requestId && error.name !== "AbortError") productsEl.innerHTML = `<div class="empty">${escapeHtml(error.message)}</div>`;
   } finally {
     if (currentRequest === requestId) {
       productsEl.removeAttribute("aria-busy");
@@ -138,14 +158,11 @@ async function load({ append = false } = {}) {
   }
 }
 
-try {
-  const categories = await api("/api/categories");
+const categoriesPromise = api("/api/categories").then((categories) => {
   chipsEl.innerHTML = categories
-    .map((c) => `<button class="chip" data-category="${c.slug}" id="${c.slug}">${c.name}</button>`)
+    .map((c) => `<button class="chip" data-category="${escapeHtml(c.slug)}" id="${escapeHtml(c.slug)}">${escapeHtml(c.name)}</button>`)
     .join("");
-} catch (error) {
-  chipsEl.innerHTML = `<div class="empty">${error.message}</div>`;
-}
+}).catch((error) => { chipsEl.innerHTML = `<div class="empty">${escapeHtml(error.message)}</div>`; });
 
 function selectCategory(chip) {
   category = chip.dataset.category;
@@ -169,7 +186,7 @@ document.querySelectorAll(".category-card[data-category]").forEach((card) => {
 });
 
 let searchTimer;
-searchEl.addEventListener("input", () => { clearTimeout(searchTimer); searchTimer = setTimeout(() => load(), 250); });
+searchEl.addEventListener("input", () => { clearTimeout(searchTimer); searchTimer = setTimeout(() => load(), 300); });
 sortEl.addEventListener("change", () => load());
 facetsEl.addEventListener("change", (event) => {
   const input = event.target.closest("[data-filter]");
@@ -235,7 +252,7 @@ document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") document.querySelector(".quick-view")?.remove();
 });
 
-await load();
+await Promise.all([categoriesPromise, load()]);
 
 if (location.hash) {
   document.querySelector(location.hash)?.scrollIntoView();

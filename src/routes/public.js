@@ -46,19 +46,17 @@ function allowSubscribeRequest(ip) {
   return true;
 }
 
-function mapProduct(row) {
-  return {
+function mapProduct(row, { includeDetails = true } = {}) {
+  const product = {
     id: row.id,
     slug: row.slug,
     name: row.name,
     tagline: row.tagline,
-    description: row.description,
     price: row.price,
     oldPrice: row.old_price,
     color: row.color,
     storage: row.storage,
     stock: row.stock,
-    specifications: row.specifications || {},
     imageUrl: row.image_url,
     featured: row.featured,
     isAvailable: row.source === "jabko" ? row.source_available : row.stock > 0,
@@ -68,6 +66,11 @@ function mapProduct(row) {
       name: row.category_name,
     },
   };
+  if (includeDetails) {
+    product.description = row.description;
+    product.specifications = row.specifications || {};
+  }
+  return product;
 }
 
 const PRODUCT_SELECT = `
@@ -175,7 +178,7 @@ publicRouter.get("/products", asyncHandler(async (req, res) => {
       pool.query(countSql, params),
       pool.query(`${sql} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`, [...params, limit, offset]),
     ]);
-    return res.json({ products: rows.map(mapProduct), total: countRows[0].total, limit, offset });
+    return res.json({ products: rows.map((row) => mapProduct(row, { includeDetails: false })), total: countRows[0].total, limit, offset });
   }
   const { rows } = await pool.query(sql, params);
   res.json(rows.map(mapProduct));
@@ -187,11 +190,14 @@ publicRouter.get("/products/deals", asyncHandler(async (_req, res) => {
       AND (CASE WHEN p.source = 'jabko' THEN p.source_available ELSE p.stock > 0 END) = TRUE
     ORDER BY ((p.old_price - p.price)::numeric / NULLIF(p.old_price, 0)) DESC, p.id DESC
     LIMIT 4`);
-  res.json(rows.map(mapProduct));
+  res.json(rows.map((row) => mapProduct(row, { includeDetails: false })));
 }));
 
+const facetCache = new Map();
 publicRouter.get("/products/facets", asyncHandler(async (req, res) => {
   const category = String(req.query.category || "");
+  const cached = facetCache.get(category);
+  if (cached && Date.now() - cached.time < 60_000) return res.json(cached.data);
   const { rows } = await pool.query(`SELECT p.specifications, p.color, p.source, p.source_available, p.stock
     FROM products p JOIN categories c ON c.id=p.category_id WHERE p.is_active=TRUE AND c.slug=$1`, [category]);
   const discoveredKeys = new Set(["Об'єм пам'яті", "Формат SIM-карти", "Колір пристрою", "Оперативна пам'ять", "Діагональ дисплея", "Тип підключення", "Тип кейсу"]);
@@ -209,7 +215,9 @@ publicRouter.get("/products/facets", asyncHandler(async (req, res) => {
     }
     if (counts.size) facets[key] = [...counts].map(([value, count]) => ({ value, count })).sort((a,b) => a.value.localeCompare(b.value, "uk"));
   }
-  res.json({ facets, availability: rows.reduce((sum, row) => sum + (row.source === "jabko" ? row.source_available : row.stock > 0 ? 1 : 0), 0), total: rows.length });
+  const result = { facets, availability: rows.reduce((sum, row) => sum + (row.source === "jabko" ? row.source_available : row.stock > 0 ? 1 : 0), 0), total: rows.length };
+  facetCache.set(category, { data: result, time: Date.now() });
+  res.json(result);
 }));
 
 publicRouter.get("/products/:slug", asyncHandler(async (req, res) => {
