@@ -137,7 +137,10 @@ export async function adminOrders(limit = 10, offset = 0) {
 }
 
 export async function setOrderStatus(id, status) {
-  const { rows } = await pool.query("UPDATE orders SET status = $1 WHERE id = $2 RETURNING *", [status, id]);
+  const { rows } = await pool.query(`UPDATE orders SET status = $1,
+    confirmed_at = CASE WHEN status = 'new' AND $1 = 'processing' THEN NOW() ELSE confirmed_at END,
+    payment_status = CASE WHEN $1 = 'processing' AND payment_status = 'awaiting_confirmation' THEN 'awaiting_payment' ELSE payment_status END
+    WHERE id = $2 RETURNING *`, [status, id]);
   return rows[0] || null;
 }
 

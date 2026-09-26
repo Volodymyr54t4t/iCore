@@ -291,7 +291,7 @@ publicRouter.post("/orders", asyncHandler(async (req, res) => {
 async function paymentOrder(id, token) {
   const { rows } = await pool.query(
     `SELECT id, total, status, payment_status, payment_provider, payment_amount, payment_receipt,
-            payment_proof_url, payment_proof_at, payment_token
+            payment_proof_url, payment_proof_at, payment_confirmed_at, payment_token
      FROM orders WHERE id = $1 AND payment_token = $2`,
     [id, token]
   );
@@ -311,6 +311,7 @@ publicRouter.get("/orders/:id/payment", asyncHandler(async (req, res) => {
     receipt: order.payment_receipt,
     proofUrl: order.payment_proof_url,
     proofAt: order.payment_proof_at,
+    paymentConfirmedAt: order.payment_confirmed_at,
   });
 }));
 
@@ -319,6 +320,8 @@ publicRouter.patch("/orders/:id/payment-method", asyncHandler(async (req, res) =
   if (!["monobank", "privatbank"].includes(provider)) return res.status(400).json({ error: "Оберіть банк для передоплати" });
   const order = await paymentOrder(req.params.id, token);
   if (!order) return res.status(404).json({ error: "Рахунок не знайдено" });
+  if (order.status === "new" || order.payment_status === "awaiting_confirmation") return res.status(409).json({ error: "Дочекайтеся дзвінка менеджера та підтвердження замовлення" });
+  if (order.status === "cancelled") return res.status(409).json({ error: "Скасоване замовлення не можна оплатити" });
   if (order.payment_status === "proof_submitted" || order.payment_status === "confirmed") return res.status(400).json({ error: "Підтвердження оплати вже надіслано" });
   await pool.query("UPDATE orders SET payment_provider = $1 WHERE id = $2", [provider, order.id]);
   res.json({ ok: true, provider });
@@ -328,6 +331,8 @@ publicRouter.post("/orders/:id/payment-proof", asyncHandler(async (req, res) => 
   const { token, dataUrl } = req.body || {};
   const order = await paymentOrder(req.params.id, token);
   if (!order) return res.status(404).json({ error: "Рахунок не знайдено" });
+  if (order.status === "new" || order.payment_status === "awaiting_confirmation") return res.status(409).json({ error: "Оплата стане доступною після дзвінка та підтвердження менеджером" });
+  if (order.status === "cancelled") return res.status(409).json({ error: "Скасоване замовлення не можна оплатити" });
   if (!order.payment_provider) return res.status(400).json({ error: "Спершу оберіть банк" });
   const match = String(dataUrl || "").match(/^data:image\/(png|jpe?g|webp);base64,([a-zA-Z0-9+/=]+)$/);
   if (!match) return res.status(400).json({ error: "Прикріпіть скрін у форматі PNG, JPG або WebP" });

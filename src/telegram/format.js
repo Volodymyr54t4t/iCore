@@ -1,6 +1,6 @@
 export const STATUS = {
-  new: "🆕 Нове",
-  processing: "⚙️ В обробці",
+  new: "📞 Очікує дзвінка",
+  processing: "✅ Підтверджено · в обробці",
   shipped: "🚚 Відправлено",
   done: "✅ Виконано",
   cancelled: "❌ Скасовано",

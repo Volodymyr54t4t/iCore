@@ -170,13 +170,13 @@ adminRouter.get("/stats", requireAdmin, asyncHandler(async (_req, res) => {
   const [{ rows: products }, { rows: orders }, { rows: revenue }, { rows: customers }, { rows: lowStock }, { rows: recent }, { rows: chart }, { rows: statuses }, { rows: activity }] = await Promise.all([
     pool.query("SELECT COUNT(*)::int AS count FROM products"),
     pool.query("SELECT COUNT(*)::int AS count FROM orders"),
-    pool.query("SELECT COALESCE(SUM(total),0)::int AS sum FROM orders WHERE status <> 'cancelled'"),
+    pool.query("SELECT COALESCE(SUM(total),0)::int AS sum FROM orders WHERE payment_status = 'confirmed' AND status <> 'cancelled'"),
     pool.query("SELECT COUNT(*)::int AS count FROM customers"),
     pool.query("SELECT COUNT(*)::int AS count FROM products WHERE stock <= 5 AND source <> 'jabko' AND is_active=TRUE"),
     pool.query("SELECT id, customer_name, total, status, created_at FROM orders ORDER BY id DESC LIMIT 5"),
     pool.query(`SELECT TO_CHAR(day, 'DD Mon') AS label, COALESCE(SUM(total),0)::int AS total
       FROM generate_series(CURRENT_DATE - INTERVAL '6 days', CURRENT_DATE, INTERVAL '1 day') day
-      LEFT JOIN orders o ON o.created_at >= day AND o.created_at < day + INTERVAL '1 day' AND o.status <> 'cancelled'
+      LEFT JOIN orders o ON o.created_at >= day AND o.created_at < day + INTERVAL '1 day' AND o.status <> 'cancelled' AND o.payment_status = 'confirmed'
       GROUP BY day ORDER BY day`),
     pool.query("SELECT status, COUNT(*)::int AS count FROM orders GROUP BY status"),
     pool.query("SELECT * FROM activity_log ORDER BY id DESC LIMIT 7"),
@@ -454,13 +454,26 @@ adminRouter.patch("/orders/:id", requireAdmin, asyncHandler(async (req, res) => 
   if (!allowed.includes(status)) {
     return res.status(400).json({ error: "Невідомий статус" });
   }
-  const { rows } = await pool.query("UPDATE orders SET status = $1 WHERE id = $2 RETURNING *", [
-    status,
-    req.params.id,
-  ]);
+  const { rows } = await pool.query(`UPDATE orders SET status = $1,
+    confirmed_at = CASE WHEN status = 'new' AND $1 = 'processing' THEN NOW() ELSE confirmed_at END,
+    payment_status = CASE WHEN $1 = 'processing' AND payment_status = 'awaiting_confirmation' THEN 'awaiting_payment' ELSE payment_status END
+    WHERE id = $2 RETURNING *`, [status, req.params.id]);
   if (!rows[0]) return res.status(404).json({ error: "Замовлення не знайдено" });
   await audit(req, "Змінив статус замовлення", "order", rows[0].id, { status });
   res.json({ ...rows[0], status });
+}));
+
+adminRouter.patch("/orders/:id/payment", requireAdmin, asyncHandler(async (req, res) => {
+  const { status } = req.body || {};
+  if (!["awaiting_payment", "confirmed", "rejected", "refunded"].includes(status)) {
+    return res.status(400).json({ error: "Невідомий статус оплати" });
+  }
+  const { rows } = await pool.query(`UPDATE orders SET payment_status = $1,
+    payment_confirmed_at = CASE WHEN $1 = 'confirmed' THEN NOW() ELSE NULL END
+    WHERE id = $2 AND status <> 'new' AND (status <> 'cancelled' OR $1 = 'refunded') RETURNING *`, [status, req.params.id]);
+  if (!rows[0]) return res.status(404).json({ error: "Замовлення не знайдено або його ще не підтвердив менеджер" });
+  await audit(req, status === "confirmed" ? "Підтвердив оплату замовлення" : "Змінив статус оплати замовлення", "order", rows[0].id, { paymentStatus: status });
+  res.json(rows[0]);
 }));
 
 adminRouter.delete("/orders/:id", requireAdmin, asyncHandler(async (req, res) => {

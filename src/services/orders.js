@@ -41,7 +41,7 @@ export async function createOrder({
     const orderResult = await client.query(
       `INSERT INTO orders
         (customer_name, customer_phone, customer_email, city, address, notes, total, telegram_chat_id, customer_id, payment_status, payment_amount, payment_token)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'awaiting_payment',$10,$11) RETURNING *`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'awaiting_confirmation',$10,$11) RETURNING *`,
       [
         name.trim(),
         phone.trim(),

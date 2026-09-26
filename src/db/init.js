@@ -186,6 +186,8 @@ export async function initDatabase() {
   await ensureColumn("orders", "payment_token", "payment_token TEXT NOT NULL DEFAULT md5(random()::text || clock_timestamp()::text)");
   await ensureColumn("orders", "payment_proof_url", "payment_proof_url TEXT NOT NULL DEFAULT ''");
   await ensureColumn("orders", "payment_proof_at", "payment_proof_at TIMESTAMPTZ");
+  await ensureColumn("orders", "payment_confirmed_at", "payment_confirmed_at TIMESTAMPTZ");
+  await ensureColumn("orders", "confirmed_at", "confirmed_at TIMESTAMPTZ");
   await ensureColumn("products", "source", "source TEXT NOT NULL DEFAULT 'manual'");
   await ensureColumn("catalog_import_runs", "trigger_type", "trigger_type TEXT NOT NULL DEFAULT 'manual'");
   await pool.query(`UPDATE catalog_import_runs SET status='not_started', finished_at=COALESCE(finished_at,started_at)
