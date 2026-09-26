@@ -156,6 +156,40 @@ input:focus,select:focus,textarea:focus { border-color: rgba(130,170,255,.72)!im
 .cart-assurances>div { color: #dce1ee; }
 .cart-empty { color: #f3f4f8; background: #151720; }
 .payment-page { min-height: 100vh; }
+.order-tracking-wrap { min-height:calc(100vh - 64px); display:grid; align-items:start; padding-top:58px; padding-bottom:64px; }
+.tracking-card { width:min(940px,100%); margin:0 auto; padding:clamp(22px,4vw,42px); border:1px solid rgba(255,255,255,.09); border-radius:26px; color:#f3f5fa; background:radial-gradient(ellipse at 90% 0,rgba(89,105,173,.2),transparent 42%),#14161d; box-shadow:0 24px 70px rgba(0,0,0,.3); }
+.tracking-head { display:flex; justify-content:space-between; align-items:flex-start; gap:18px; padding-bottom:25px; border-bottom:1px solid rgba(255,255,255,.09); }
+.tracking-head h1,.tracking-error h1 { margin:0; color:#f5f6fa; font-size:clamp(27px,5vw,42px); letter-spacing:-.055em; }
+.tracking-head p:not(.cart-kicker) { margin:7px 0 0; color:#959baa; font-size:11px; }
+.tracking-home { color:#b5c4f5; font-size:11px; white-space:nowrap; }
+.tracking-steps { position:relative; display:grid; gap:0; margin:28px 0 30px; padding:0; list-style:none; }
+.tracking-steps li { position:relative; display:grid; grid-template-columns:36px minmax(0,1fr); gap:14px; min-height:74px; color:#7e8492; }
+.tracking-steps li:not(:last-child)::after { position:absolute; top:34px; bottom:0; left:16px; width:2px; content:""; background:rgba(255,255,255,.1); }
+.tracking-steps li.is-done:not(:last-child)::after { background:#899ee6; }
+.tracking-dot { z-index:1; display:grid; place-items:center; width:34px; height:34px; border:1px solid rgba(255,255,255,.15); border-radius:50%; background:#1a1d26; font-size:10px; font-weight:700; }
+.tracking-steps li.is-done .tracking-dot { border-color:#8ea3ed; color:#14161d; background:#9caff5; }
+.tracking-steps li.is-active .tracking-dot { border-color:#9caff5; color:#fff; box-shadow:0 0 0 5px rgba(134,157,238,.12); }
+.tracking-steps li>div { display:grid; align-content:start; gap:4px; padding:3px 0 18px; }
+.tracking-steps b { color:#dfe2eb; font-size:12px; }
+.tracking-steps li.is-active b { color:#fff; }
+.tracking-steps small { color:#858c9a; font-size:10px; line-height:1.5; }
+.tracking-summary { display:grid; grid-template-columns:1.2fr .8fr; gap:25px; padding-top:24px; border-top:1px solid rgba(255,255,255,.09); }
+.tracking-summary aside { padding:16px; border:1px solid rgba(255,255,255,.08); border-radius:15px; background:rgba(255,255,255,.025); }
+.tracking-summary aside p:not(.cart-kicker) { color:#aeb4c1; font-size:11px; line-height:1.6; }
+.tracking-summary aside b { color:#f1f3f7; }
+.tracking-item,.tracking-total { display:flex; justify-content:space-between; gap:14px; padding:9px 0; border-bottom:1px solid rgba(255,255,255,.07); color:#b5bbc8; font-size:11px; }
+.tracking-item strong { color:#f0f2f7; white-space:nowrap; }
+.tracking-total { padding:13px 0 0; border:0; color:#d6dae3; }
+.tracking-total b { color:#fff; font-size:17px; }
+.tracking-summary .btn { display:inline-flex; align-items:center; gap:9px; margin-top:8px; }
+.tracking-footer { display:flex; justify-content:space-between; align-items:center; gap:14px; margin-top:25px; color:#858c9a; font-size:10px; }
+.tracking-footer .btn { padding:8px 12px; font-size:10px; }
+.tracking-cancelled { margin:25px 0; padding:15px; border:1px solid rgba(255,111,126,.22); border-radius:12px; color:#ffc1c8; background:rgba(182,52,66,.1); font-size:12px; }
+.tracking-cancelled a { color:#fff; text-decoration:underline; }
+.tracking-error { text-align:center; }
+.tracking-error p:not(.cart-kicker) { color:#a7acb8; font-size:12px; }
+.tracking-error .btn { display:inline-flex; margin-top:10px; }
+@media(max-width:650px) { .order-tracking-wrap { padding:25px 14px 45px; }.tracking-head { flex-direction:column; }.tracking-summary { grid-template-columns:1fr; gap:16px; }.tracking-footer { align-items:flex-start; flex-direction:column; } }
 .payment-card,.payment-receipt { border-radius: 22px; }
 .payment-step { color: #a8bdff; }
 .payment-option { border-color: var(--line); background: #1b1d25; }

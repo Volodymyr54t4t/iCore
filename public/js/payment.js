@@ -19,7 +19,7 @@ async function show() {
   try {
     const order = await api(`/api/orders/${encodeURIComponent(id)}/payment?token=${encodeURIComponent(token)}`);
     if (order.status === "new" || order.paymentStatus === "awaiting_confirmation") {
-      root.innerHTML = `<section class="checkout-success"><div class="checkout-empty-icon">◷</div><p class="cart-kicker">ЗАМОВЛЕННЯ №${order.id} · ЕТАП 1 З 3</p><h1>Менеджер скоро зателефонує</h1><p>Під час дзвінка ми підтвердимо товар, адресу та спосіб оплати. Після підтвердження на цій сторінці з’являться платіжні інструкції.</p><div class="payment-success">Поточний статус: очікує дзвінка менеджера</div><button class="btn" id="refresh-order">Перевірити статус замовлення</button><p class="muted">Після розмови оновіть сторінку, щоб перейти до оплати.</p></section>`;
+      root.innerHTML = `<section class="checkout-success"><div class="checkout-empty-icon">◷</div><p class="cart-kicker">ЗАМОВЛЕННЯ №${order.id} · ЕТАП 1 З 3</p><h1>Менеджер скоро зателефонує</h1><p>Під час дзвінка ми підтвердимо товар, адресу та спосіб оплати. Після підтвердження на цій сторінці з’являться платіжні інструкції.</p><div class="payment-success">Поточний статус: очікує дзвінка менеджера</div><button class="btn" id="refresh-order">Перевірити статус замовлення</button><p><a class="checkout-back" href="/track-order.html?order=${encodeURIComponent(order.id)}&token=${encodeURIComponent(token)}">Відкрити сторінку відстеження →</a></p></section>`;
       document.getElementById("refresh-order").onclick = show;
       refreshTimer = setTimeout(show, 15000);
       return;

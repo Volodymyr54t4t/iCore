@@ -2,8 +2,8 @@ import { api, addToCart, formatPrice, mountNav, toast } from "./api.js";
 
 const root = document.getElementById("account");
 const STATUS = {
-  new: "Нове",
-  processing: "В обробці",
+  new: "Очікує дзвінка",
+  processing: "Підтверджено · в обробці",
   shipped: "Відправлено",
   done: "Виконано",
   cancelled: "Скасовано",
@@ -40,9 +40,12 @@ function renderOrders() {
         .join("");
       const canRepeat = (o.items || []).some((i) => i.productId && i.slug);
       const canCancel = o.status === "new";
-      const paymentAction = o.payment_status !== "proof_submitted" && o.payment_status !== "confirmed" && o.payment_token
+      const paymentAction = o.payment_status === "awaiting_confirmation"
+        ? `<span class="status-pill status-processing">Оплата після дзвінка менеджера</span>`
+        : o.payment_status !== "proof_submitted" && o.payment_status !== "confirmed" && o.payment_token
         ? `<a class="btn" href="/payment.html?order=${o.id}&token=${encodeURIComponent(o.payment_token)}">Передоплата 50%</a>`
         : o.payment_status === "proof_submitted" ? `<span class="status-pill status-processing">Скрін передоплати перевіряється</span>` : "";
+      const trackingAction = o.payment_token ? `<a class="btn ghost" href="/track-order.html?order=${o.id}&token=${encodeURIComponent(o.payment_token)}">Відстежити</a>` : "";
       return `
         <article class="order-card account-order-card">
           <div class="order-head">
@@ -56,6 +59,7 @@ function renderOrders() {
           <div class="order-meta"><span>⌖ ${o.city}, ${o.address}</span>${o.notes ? `<span>· ${o.notes}</span>` : ""}</div>
           <ul class="order-items">${items}</ul>
           <div class="order-actions">
+            ${trackingAction}
             ${paymentAction}
             ${canRepeat ? `<button class="btn ghost" data-repeat="${o.id}">Повторити</button>` : ""}
             ${canCancel ? `<button class="btn danger" data-cancel="${o.id}">Скасувати</button>` : ""}

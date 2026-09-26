@@ -281,6 +281,7 @@ publicRouter.post("/orders", asyncHandler(async (req, res) => {
       paymentAmount: order.paymentAmount,
       receipt: order.receipt,
       paymentUrl: `/payment.html?order=${order.id}&token=${order.paymentToken}`,
+      trackingUrl: `/track-order.html?order=${order.id}&token=${order.paymentToken}`,
       account: Boolean(customer),
     });
   } catch (error) {
@@ -291,7 +292,8 @@ publicRouter.post("/orders", asyncHandler(async (req, res) => {
 async function paymentOrder(id, token) {
   const { rows } = await pool.query(
     `SELECT id, total, status, payment_status, payment_provider, payment_amount, payment_receipt,
-            payment_proof_url, payment_proof_at, payment_confirmed_at, payment_token
+            payment_proof_url, payment_proof_at, payment_confirmed_at, payment_token,
+            city, address, created_at, confirmed_at
      FROM orders WHERE id = $1 AND payment_token = $2`,
     [id, token]
   );
@@ -312,6 +314,30 @@ publicRouter.get("/orders/:id/payment", asyncHandler(async (req, res) => {
     proofUrl: order.payment_proof_url,
     proofAt: order.payment_proof_at,
     paymentConfirmedAt: order.payment_confirmed_at,
+  });
+}));
+
+publicRouter.get("/orders/:id/tracking", asyncHandler(async (req, res) => {
+  const order = await paymentOrder(req.params.id, req.query.token);
+  if (!order) return res.status(404).json({ error: "Замовлення не знайдено або посилання недійсне" });
+  const { rows: items } = await pool.query(
+    "SELECT product_name, quantity, price FROM order_items WHERE order_id = $1 ORDER BY id",
+    [order.id]
+  );
+  res.json({
+    id: order.id,
+    status: order.status,
+    paymentStatus: order.payment_status,
+    total: order.total,
+    paymentAmount: order.payment_amount,
+    receipt: order.payment_receipt,
+    paymentConfirmedAt: order.payment_confirmed_at,
+    proofAt: order.payment_proof_at,
+    items,
+    city: order.city,
+    address: order.address,
+    created_at: order.created_at,
+    confirmed_at: order.confirmed_at,
   });
 }));
 
