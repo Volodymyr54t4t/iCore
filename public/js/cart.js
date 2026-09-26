@@ -2,6 +2,9 @@ import { formatPrice, getCart, saveCart, mountNav } from "./api.js";
 
 await mountNav();
 
+const escapeHtml = (value = "") => String(value).replace(/[&<>"']/g, (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
+const escapeAttr = escapeHtml;
+
 function render() {
   const cart = getCart();
   const root = document.getElementById("cart");
@@ -30,19 +33,19 @@ function render() {
         <div class="cart-items">
           ${cart.map((i) => `
             <article class="cart-item">
-              <a class="cart-item-image" href="/product.html?slug=${i.slug}" aria-label="Переглянути ${i.name}">
-                ${i.imageUrl ? `<img src="${i.imageUrl}" alt="${i.name}" />` : `<span>CVV</span>`}
+              <a class="cart-item-image" href="/product.html?slug=${encodeURIComponent(i.slug || "")}" aria-label="Переглянути ${escapeAttr(i.name)}">
+                ${i.imageUrl ? `<img src="${escapeAttr(i.imageUrl)}" alt="${escapeAttr(i.name)}" />` : `<span>CVV</span>`}
               </a>
               <div class="cart-item-info">
-                <a class="cart-item-name" href="/product.html?slug=${i.slug}">${i.name}</a>
+                <a class="cart-item-name" href="/product.html?slug=${encodeURIComponent(i.slug || "")}">${escapeHtml(i.name)}</a>
                 <p class="cart-item-unit">${formatPrice(i.price)} за одиницю</p>
                 <div class="cart-item-actions">
                   <div class="quantity-control" aria-label="Кількість ${i.name}">
-                    <button type="button" data-adjust="${i.id}" data-delta="-1" aria-label="Зменшити кількість">−</button>
-                    <input class="qty" type="number" min="1" value="${i.quantity}" data-qty="${i.id}" aria-label="Кількість" />
-                    <button type="button" data-adjust="${i.id}" data-delta="1" aria-label="Збільшити кількість">+</button>
+                    <button type="button" data-adjust="${escapeAttr(i.id)}" data-delta="-1" aria-label="Зменшити кількість">−</button>
+                    <input class="qty" type="number" min="1" value="${Number(i.quantity) || 1}" data-qty="${escapeAttr(i.id)}" aria-label="Кількість" />
+                    <button type="button" data-adjust="${escapeAttr(i.id)}" data-delta="1" aria-label="Збільшити кількість">+</button>
                   </div>
-                  <button class="remove-item" type="button" data-remove="${i.id}">
+                  <button class="remove-item" type="button" data-remove="${escapeAttr(i.id)}">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M9 7l1-3h4l1 3M6 7l1 13h10l1-13"/></svg>
                     <span>Прибрати</span>
                   </button>

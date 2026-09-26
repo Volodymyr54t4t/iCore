@@ -135,6 +135,7 @@ CREATE TABLE IF NOT EXISTS product_reviews (
 CREATE TABLE IF NOT EXISTS catalog_import_runs (
   id SERIAL PRIMARY KEY,
   source TEXT NOT NULL,
+  trigger_type TEXT NOT NULL DEFAULT 'manual',
   status TEXT NOT NULL,
   stats JSONB NOT NULL DEFAULT '{}'::jsonb,
   started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -186,6 +187,15 @@ export async function initDatabase() {
   await ensureColumn("orders", "payment_proof_url", "payment_proof_url TEXT NOT NULL DEFAULT ''");
   await ensureColumn("orders", "payment_proof_at", "payment_proof_at TIMESTAMPTZ");
   await ensureColumn("products", "source", "source TEXT NOT NULL DEFAULT 'manual'");
+  await ensureColumn("catalog_import_runs", "trigger_type", "trigger_type TEXT NOT NULL DEFAULT 'manual'");
+  await pool.query(`UPDATE catalog_import_runs SET status='not_started', finished_at=COALESCE(finished_at,started_at)
+    WHERE source='jabko' AND status='failed' AND stats->>'error'='Імпорт Ябко вже виконується'`);
+  await pool.query(`INSERT INTO system_flags (key, value, updated_at)
+    SELECT 'jabko_auto_last_success_at', COALESCE(
+      (SELECT MAX(finished_at)::text FROM catalog_import_runs WHERE source='jabko' AND status='completed' AND finished_at IS NOT NULL),
+      (NOW() - INTERVAL '7 days')::text
+    ), NOW()
+    ON CONFLICT (key) DO NOTHING`);
   await ensureColumn("products", "source_id", "source_id TEXT");
   await ensureColumn("products", "source_url", "source_url TEXT NOT NULL DEFAULT ''");
   await ensureColumn("products", "source_sku", "source_sku TEXT NOT NULL DEFAULT ''");

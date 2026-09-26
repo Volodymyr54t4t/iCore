@@ -69,6 +69,37 @@ function card(p) {
   `;
 }
 
+async function renderDeals() {
+  const section = document.getElementById("deals-section");
+  const grid = document.getElementById("deals-grid");
+  if (!section || !grid) return;
+  try {
+    let deals;
+    try {
+      deals = await api("/api/products/deals");
+    } catch {
+      // Backward-compatible fallback for a server that has not been restarted yet.
+      const result = await api("/api/products?limit=60&sort=price_desc");
+      const products = result.products || result;
+      deals = products.filter((p) => p.oldPrice > p.price && p.isAvailable)
+        .sort((a, b) => (1 - b.price / b.oldPrice) - (1 - a.price / a.oldPrice)).slice(0, 4);
+    }
+    if (!deals.length) return;
+    grid.innerHTML = deals.map((p, index) => {
+      const percent = Math.round((1 - Number(p.price) / Number(p.oldPrice)) * 100);
+      return `<a class="deal-card reveal-on-scroll" style="--deal-index:${index}" href="/product.html?slug=${encodeURIComponent(p.slug)}">
+        <span class="deal-badge">−${percent}%</span><div class="deal-image">${p.imageUrl ? `<img src="${escapeHtml(p.imageUrl)}" alt="${escapeHtml(p.name)}" loading="lazy" />` : `<span>CVV</span>`}<i aria-hidden="true">↗</i></div>
+        <div class="deal-copy"><small>${escapeHtml(p.category?.name || "Спеціальна ціна")}</small><h3>${escapeHtml(p.name)}</h3><p>${escapeHtml(p.tagline || "Актуальна пропозиція з каталогу")}</p><div><b>${formatPrice(p.price)}</b><del>${formatPrice(p.oldPrice)}</del><span>−${formatPrice(Number(p.oldPrice) - Number(p.price))}</span></div></div>
+      </a>`;
+    }).join("");
+    section.hidden = false;
+    section.querySelectorAll(".deal-card").forEach((el) => revealObserver.observe(el));
+    revealObserver.observe(section);
+  } catch { /* Keep the homepage clean when there are no active offers. */ }
+}
+
+renderDeals();
+
 async function load({ append = false } = {}) {
   const currentRequest = ++requestId;
   if (!append) {

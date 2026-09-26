@@ -181,6 +181,15 @@ publicRouter.get("/products", asyncHandler(async (req, res) => {
   res.json(rows.map(mapProduct));
 }));
 
+publicRouter.get("/products/deals", asyncHandler(async (_req, res) => {
+  const { rows } = await pool.query(`${PRODUCT_SELECT}
+    WHERE p.is_active = TRUE AND p.old_price > p.price
+      AND (CASE WHEN p.source = 'jabko' THEN p.source_available ELSE p.stock > 0 END) = TRUE
+    ORDER BY ((p.old_price - p.price)::numeric / NULLIF(p.old_price, 0)) DESC, p.id DESC
+    LIMIT 4`);
+  res.json(rows.map(mapProduct));
+}));
+
 publicRouter.get("/products/facets", asyncHandler(async (req, res) => {
   const category = String(req.query.category || "");
   const { rows } = await pool.query(`SELECT p.specifications, p.color, p.source, p.source_available, p.stock

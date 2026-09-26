@@ -157,12 +157,12 @@ async function enrichProduct(listing) {
   return parseProductPage(html, listing);
 }
 
-function markupFor(category) {
-  const key = category === "iphone" ? "JABKO_IPHONE_MARKUP_PERCENT" : "JABKO_OTHER_MARKUP_PERCENT";
-  const fallback = category === "iphone" ? 15 : 0;
-  const value = Number(process.env[key] ?? fallback);
-  if (!Number.isFinite(value) || value < 0 || value > 200) throw new Error(`${key} має бути числом від 0 до 200`);
-  return value;
+function markupFor(category, product = {}) {
+  const name = String(product.name || "");
+  if (category === "iphone") return /\bpro\b/i.test(name) ? 5 : 7;
+  if (category === "mac") return /mac\s*book\s*pro|mac\s*pro|mac\s*studio/i.test(name) ? 5 : 6;
+  if (category === "airpods") return /чохол|кейс|амбушур|насадк|кабель|адаптер|зарядн|ремінець|накладк|case|cover|ear\s*tip|cable|adapter|charger/i.test(name) ? 15 : 10;
+  return 0;
 }
 
 function shopPrice(sourcePrice, markup) { return Math.round(sourcePrice * (1 + markup / 100)); }
@@ -184,7 +184,7 @@ async function prepareDatabaseForFirstSync() {
 }
 
 async function upsertProduct(product, categoryIds, db = pool) {
-  const markup = markupFor(product.category);
+  const markup = markupFor(product.category, product);
   const nextPrice = shopPrice(product.price, markup);
   const oldPrice = product.sourceOldPrice ? shopPrice(product.sourceOldPrice, markup) : null;
   const { rows } = await db.query(`INSERT INTO products
@@ -263,7 +263,7 @@ async function runJabkoImportInternal({ limit = 0, dryRun = false, onProgress = 
           continue;
         }
         enriched.push(product);
-        if (stats.sample.length < 10) stats.sample.push({ name: product.name, category: product.category, sourcePrice: product.price, markupPercent: markupFor(product.category), storePrice: shopPrice(product.price, markupFor(product.category)), image: product.imageUrl, url: product.sourceUrl, sku: product.sourceSku, color: product.color, storage: product.storage, available: product.available, specifications: product.specifications });
+        if (stats.sample.length < 10) stats.sample.push({ name: product.name, category: product.category, sourcePrice: product.price, markupPercent: markupFor(product.category, product), storePrice: shopPrice(product.price, markupFor(product.category, product)), image: product.imageUrl, url: product.sourceUrl, sku: product.sourceSku, color: product.color, storage: product.storage, available: product.available, specifications: product.specifications });
       } catch (error) {
         stats.errors += 1;
         stats.skipped += 1;
@@ -310,13 +310,30 @@ async function runJabkoImportInternal({ limit = 0, dryRun = false, onProgress = 
 }
 
 export async function runJabkoImport(options = {}) {
-  if (importRunning) throw new Error("Імпорт Ябко вже виконується");
-  importRunning = true;
-  try { return await runJabkoImportInternal(options); }
-  finally { importRunning = false; }
+  const reservation = reserveJabkoImport();
+  if (!reservation) throw new Error("Імпорт Ябко вже виконується");
+  return reservation.run(options);
 }
 
 export function isJabkoImportRunning() { return importRunning; }
+
+export function reserveJabkoImport() {
+  if (importRunning) return null;
+  importRunning = true;
+  let consumed = false;
+  return {
+    run(options = {}) {
+      if (consumed) throw new Error("Резерв імпорту вже використаний");
+      consumed = true;
+      return runJabkoImportInternal(options).finally(() => { importRunning = false; });
+    },
+    release() {
+      if (consumed) return;
+      consumed = true;
+      importRunning = false;
+    },
+  };
+}
 
 export async function scanJabkoCatalog({ onProgress = () => {} } = {}) {
   const result = { found: 0, categories: {}, pages: {} };
@@ -333,5 +350,17 @@ export async function scanJabkoCatalog({ onProgress = () => {} } = {}) {
 }
 
 export async function jabkoImportSettings() {
-  return { iphoneMarkupPercent: markupFor("iphone"), otherMarkupPercent: markupFor("airpods"), categories: CATEGORIES };
+  return {
+    iphoneMarkupPercent: 7,
+    otherMarkupPercent: 10,
+    markupRules: [
+      { label: "iPhone", rate: "7%" },
+      { label: "iPhone Pro / Pro Max", rate: "5%" },
+      { label: "AirPods", rate: "10%" },
+      { label: "Аксесуари AirPods", rate: "15%" },
+      { label: "MacBook Air та інші Mac", rate: "6%" },
+      { label: "MacBook Pro та преміальні Mac", rate: "5%" },
+    ],
+    categories: CATEGORIES,
+  };
 }

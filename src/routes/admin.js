@@ -7,7 +7,7 @@ import { asyncHandler } from "../utils/async.js";
 import { logActivity } from "../services/activity.js";
 import { notifySubscribers, sendNewsletterMessage } from "../services/newsletter.js";
 import { isSmtpConfigured } from "../services/contactMail.js";
-import { runJabkoImport, jabkoImportSettings, isJabkoImportRunning } from "../services/jabkoImport.js";
+import { reserveJabkoImport, jabkoImportSettings } from "../services/jabkoImport.js";
 import { getWeeklyJabkoJob } from "../services/weeklyJabkoSync.js";
 
 export const adminRouter = Router();
@@ -97,22 +97,39 @@ adminRouter.get("/me", requireAdmin, (req, res) => {
 });
 
 adminRouter.get("/jabko-import", requireAdmin, asyncHandler(async (_req, res) => {
-  const { rows } = await pool.query("SELECT id,status,stats,started_at,finished_at FROM catalog_import_runs WHERE source='jabko' ORDER BY id DESC LIMIT 1");
-  const latest = rows[0] || null;
+  const [{ rows: runs }, { rows: flags }] = await Promise.all([
+    pool.query("SELECT id,status,trigger_type,stats,started_at,finished_at FROM catalog_import_runs WHERE source='jabko' ORDER BY id DESC LIMIT 50"),
+    pool.query("SELECT value FROM system_flags WHERE key='jabko_auto_last_success_at'"),
+  ]);
+  const latest = runs[0] || null;
+  const automaticAnchor = flags[0]?.value || "";
   const databaseJob = latest && !latest.finished_at && ["collecting", "product-pages", "database"].includes(latest.status)
     ? { id: latest.id, status: latest.status, phase: latest.status, stats: latest.stats, startedAt: latest.started_at }
     : null;
-  res.json({ active: jabkoJob || getWeeklyJabkoJob() || databaseJob, lastRun: latest, settings: await jabkoImportSettings() });
+  const localJobs = [jabkoJob, getWeeklyJabkoJob()];
+  const activeJob = localJobs.find((job) => job && ["collecting", "product-pages", "database"].includes(job.status)) || databaseJob;
+  res.json({ active: activeJob || null, lastRun: latest, runs, automaticAnchor, nextAutomaticAt: automaticAnchor ? new Date(new Date(automaticAnchor).getTime() + 7 * 24 * 60 * 60 * 1000).toISOString() : null, settings: await jabkoImportSettings() });
 }));
 
 adminRouter.post("/jabko-import", requireAdmin, asyncHandler(async (req, res) => {
-  if (isJabkoImportRunning() || jabkoJob && ["collecting", "product-pages", "database"].includes(jabkoJob.status)) return res.status(409).json({ error: "Імпорт уже виконується" });
+  const reservation = reserveJabkoImport();
+  if (!reservation) return res.status(409).json({ error: "Імпорт уже виконується" });
+  if (jabkoJob && ["collecting", "product-pages", "database"].includes(jabkoJob.status)) {
+    reservation.release();
+    return res.status(409).json({ error: "Імпорт уже виконується" });
+  }
   const test = req.body?.test === true;
-  const { rows } = await pool.query(`INSERT INTO catalog_import_runs (source,status,stats) VALUES ('jabko',$1,'{}'::jsonb) RETURNING id,started_at`, [test ? "testing" : "collecting"]);
+  let rows;
+  try {
+    ({ rows } = await pool.query(`INSERT INTO catalog_import_runs (source,trigger_type,status,stats) VALUES ('jabko','manual',$1,'{}'::jsonb) RETURNING id,started_at`, [test ? "testing" : "collecting"]));
+  } catch (error) {
+    reservation.release();
+    throw error;
+  }
   const run = rows[0];
   jabkoJob = { id: run.id, status: test ? "testing" : "collecting", phase: "collecting", current: 0, total: 0, stats: {}, startedAt: run.started_at, error: "" };
   res.status(202).json({ id: run.id, status: jabkoJob.status });
-  runJabkoImport({
+  reservation.run({
     dryRun: test,
     limit: test ? 3 : 0,
     onProgress: (progress) => { jabkoJob = { ...jabkoJob, status: progress.phase, ...progress }; },
