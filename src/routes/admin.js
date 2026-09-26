@@ -87,6 +87,28 @@ adminRouter.get("/me", requireAdmin, (req, res) => {
   res.json(req.admin);
 });
 
+adminRouter.get("/reviews", requireAdmin, asyncHandler(async (_req, res) => {
+  const { rows } = await pool.query(`SELECT r.*, p.name AS product_name FROM product_reviews r
+    JOIN products p ON p.id=r.product_id ORDER BY CASE r.status WHEN 'pending' THEN 0 ELSE 1 END, r.created_at DESC`);
+  res.json(rows);
+}));
+
+adminRouter.patch("/reviews/:id", requireAdmin, asyncHandler(async (req, res) => {
+  const { status } = req.body || {};
+  if (!["published", "rejected", "pending"].includes(status)) return res.status(400).json({ error: "Некоректний статус відгуку" });
+  const { rows } = await pool.query("UPDATE product_reviews SET status=$1 WHERE id=$2 RETURNING id, status", [status, req.params.id]);
+  if (!rows[0]) return res.status(404).json({ error: "Відгук не знайдено" });
+  await audit(req, `Змінив статус відгуку на ${status}`, "product_review", rows[0].id);
+  res.json(rows[0]);
+}));
+
+adminRouter.delete("/reviews/:id", requireAdmin, asyncHandler(async (req, res) => {
+  const { rowCount } = await pool.query("DELETE FROM product_reviews WHERE id=$1", [req.params.id]);
+  if (!rowCount) return res.status(404).json({ error: "Відгук не знайдено" });
+  await audit(req, "Видалив відгук", "product_review", Number(req.params.id));
+  res.json({ ok: true });
+}));
+
 adminRouter.get("/stats", requireAdmin, asyncHandler(async (_req, res) => {
   const [{ rows: products }, { rows: orders }, { rows: revenue }, { rows: customers }, { rows: lowStock }, { rows: recent }, { rows: chart }, { rows: statuses }, { rows: activity }] = await Promise.all([
     pool.query("SELECT COUNT(*)::int AS count FROM products"),

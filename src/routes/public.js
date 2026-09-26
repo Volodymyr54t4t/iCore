@@ -15,6 +15,16 @@ export const publicRouter = Router();
 
 const contactAttempts = new Map();
 const subscribeAttempts = new Map();
+const reviewAttempts = new Map();
+
+function allowReviewRequest(ip) {
+  const now = Date.now();
+  const attempts = (reviewAttempts.get(ip) || []).filter((time) => now - time < 60 * 60 * 1000);
+  if (attempts.length >= 5) return false;
+  attempts.push(now);
+  reviewAttempts.set(ip, attempts);
+  return true;
+}
 
 function allowContactRequest(ip) {
   const now = Date.now();
@@ -152,6 +162,39 @@ publicRouter.get("/products/:slug", asyncHandler(async (req, res) => {
   const { rows } = await pool.query(`${PRODUCT_SELECT} WHERE p.slug = $1`, [req.params.slug]);
   if (!rows[0]) return res.status(404).json({ error: "Товар не знайдено" });
   res.json(mapProduct(rows[0]));
+}));
+
+publicRouter.get("/products/:slug/reviews", asyncHandler(async (req, res) => {
+  const { rows: products } = await pool.query("SELECT id FROM products WHERE slug = $1", [req.params.slug]);
+  if (!products[0]) return res.status(404).json({ error: "Товар не знайдено" });
+  const productId = products[0].id;
+  const [{ rows: summary }, { rows: reviews }] = await Promise.all([
+    pool.query("SELECT COUNT(*)::int AS count, COALESCE(ROUND(AVG(rating)::numeric, 1), 0) AS average FROM product_reviews WHERE product_id=$1 AND status='published'", [productId]),
+    pool.query("SELECT id, author_name, rating, title, body, is_verified, created_at FROM product_reviews WHERE product_id=$1 AND status='published' ORDER BY created_at DESC LIMIT 100", [productId]),
+  ]);
+  res.json({ ...summary[0], reviews });
+}));
+
+publicRouter.post("/products/:slug/reviews", asyncHandler(async (req, res) => {
+  if (!allowReviewRequest(req.ip)) return res.status(429).json({ error: "Забагато відгуків. Спробуйте пізніше." });
+  const customer = readCustomer(req);
+  const { authorName, rating, title = "", body } = req.body || {};
+  if (!Number.isInteger(Number(rating)) || Number(rating) < 1 || Number(rating) > 5) return res.status(400).json({ error: "Оберіть оцінку від 1 до 5 зірок" });
+  if (typeof body !== "string" || body.trim().length < 10 || body.trim().length > 2000) return res.status(400).json({ error: "Відгук має містити від 10 до 2000 символів" });
+  if (title && (typeof title !== "string" || title.trim().length > 100)) return res.status(400).json({ error: "Заголовок має бути до 100 символів" });
+  const name = customer?.name || (typeof authorName === "string" ? authorName.trim() : "");
+  if (name.length < 2 || name.length > 80) return res.status(400).json({ error: "Вкажіть ім’я від 2 до 80 символів" });
+  const { rows: products } = await pool.query("SELECT id FROM products WHERE slug=$1", [req.params.slug]);
+  if (!products[0]) return res.status(404).json({ error: "Товар не знайдено" });
+  let verified = false;
+  if (customer) {
+    const purchase = await pool.query(`SELECT 1 FROM order_items oi JOIN orders o ON o.id=oi.order_id
+      WHERE oi.product_id=$1 AND o.customer_id=$2 AND o.status='done' LIMIT 1`, [products[0].id, customer.id]);
+    verified = purchase.rowCount > 0;
+  }
+  await pool.query(`INSERT INTO product_reviews (product_id, customer_id, author_name, rating, title, body, is_verified)
+    VALUES ($1,$2,$3,$4,$5,$6,$7)`, [products[0].id, customer?.id || null, name, Number(rating), String(title).trim(), body.trim(), verified]);
+  res.status(201).json({ ok: true, message: "Дякуємо! Відгук з’явиться після перевірки модератором." });
 }));
 
 publicRouter.post("/orders", asyncHandler(async (req, res) => {

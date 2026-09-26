@@ -120,10 +120,24 @@ CREATE TABLE IF NOT EXISTS site_content (
   UNIQUE(path, selector, property)
 );
 
+CREATE TABLE IF NOT EXISTS product_reviews (
+  id SERIAL PRIMARY KEY,
+  product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  customer_id INTEGER REFERENCES customers(id) ON DELETE SET NULL,
+  author_name TEXT NOT NULL,
+  rating INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 5),
+  title TEXT NOT NULL DEFAULT '',
+  body TEXT NOT NULL,
+  is_verified BOOLEAN NOT NULL DEFAULT FALSE,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'published', 'rejected')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE INDEX IF NOT EXISTS activity_log_created_at_idx ON activity_log (created_at DESC);
 CREATE INDEX IF NOT EXISTS activity_log_actor_idx ON activity_log (actor_type, actor_id);
 CREATE INDEX IF NOT EXISTS newsletter_subscribers_active_idx ON newsletter_subscribers (is_active);
 CREATE INDEX IF NOT EXISTS site_content_path_idx ON site_content (path);
+CREATE INDEX IF NOT EXISTS product_reviews_product_status_idx ON product_reviews (product_id, status, created_at DESC);
 `;
 
 async function ensureColumn(table, column, definition) {
