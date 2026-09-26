@@ -16,7 +16,29 @@ const productsEl = document.getElementById("products");
 const chipsEl = document.getElementById("category-chips");
 const searchEl = document.getElementById("search");
 const sortEl = document.getElementById("sort");
+const facetsEl = document.getElementById("catalog-facets");
+const moreEl = document.getElementById("catalog-more");
+const countEl = document.getElementById("catalog-result-count");
 let category = "";
+let offset = 0;
+let total = 0;
+let requestId = 0;
+const pageSize = 24;
+const selectedFilters = {};
+
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
+}
+
+function renderFacets(data) {
+  const facets = data.facets || {};
+  facetsEl.innerHTML = `<label class="availability-filter"><input type="checkbox" data-filter="available" ${selectedFilters.available ? "checked" : ""}/> Є в наявності <small>${data.availability || 0}</small></label>` +
+    Object.entries(facets).map(([key, values]) => {
+      const filterKey = /колір/i.test(key) ? "color" : key === "Об'єм пам'яті" ? "capacity" : key === "Формат SIM-карти" ? "sim" : `spec:${key}`;
+      return `<label class="facet-select"><span>${escapeHtml(key)}</span><select data-filter="${escapeHtml(filterKey)}"><option value="">Усі</option>${values.map(({ value, count }) => `<option value="${escapeHtml(value)}" ${selectedFilters[filterKey] === value ? "selected" : ""}>${escapeHtml(value)} <small>(${count})</small></option>`).join("")}</select></label>`;
+    }).join("");
+  facetsEl.hidden = !category;
+}
 
 function card(p) {
   const discount = p.oldPrice && p.oldPrice > p.price
@@ -34,12 +56,12 @@ function card(p) {
         <button class="product-card-open" type="button" data-quick-view="${p.id}" aria-label="Швидкий перегляд ${p.name}"><span>↗</span></button>
       </div>
       <div class="card-body">
-        <div class="product-card-meta"><span>${p.stock > 0 ? "В наявності" : "Під замовлення"}</span><i></i><span>Офіційна гарантія</span></div>
+        <div class="product-card-meta"><span>${p.isAvailable ? "В наявності" : "Під замовлення"}</span><i></i><span>Офіційна гарантія</span></div>
         <h3><a href="/product.html?slug=${p.slug}">${p.name}</a></h3>
         <div class="tagline">${p.tagline}</div>
         <div class="price"><span>${formatPrice(p.price)}</span>${p.oldPrice ? `<span class="old">${formatPrice(p.oldPrice)}</span>` : ""}</div>
         <div class="row">
-          <button class="btn" data-add="${p.id}">У кошик <span>+</span></button>
+          <button class="btn" data-add="${p.id}" ${p.isAvailable ? "" : "disabled"}>${p.isAvailable ? 'У кошик <span>+</span>' : "Тимчасово немає"}</button>
           <a class="btn ghost" href="/product.html?slug=${p.slug}">Детальніше <span>→</span></a>
         </div>
       </div>
@@ -47,28 +69,41 @@ function card(p) {
   `;
 }
 
-async function load() {
+async function load({ append = false } = {}) {
+  const currentRequest = ++requestId;
+  if (!append) {
+    offset = 0;
+    productsEl.innerHTML = "";
+    productsEl.setAttribute("aria-busy", "true");
+    productsEl.classList.add("is-loading");
+  }
   const params = new URLSearchParams();
   if (category) params.set("category", category);
   if (searchEl.value.trim()) params.set("q", searchEl.value.trim());
   if (sortEl.value) params.set("sort", sortEl.value);
+  params.set("limit", String(pageSize));
+  params.set("offset", String(offset));
+  for (const [key, value] of Object.entries(selectedFilters)) if (value) params.set(key, value === true ? "1" : value);
   try {
-    const products = await api("/api/products?" + params.toString());
-    window.__products = products;
-    productsEl.innerHTML = products.length
-      ? products.map(card).join("")
-      : `<div class="empty">Нічого не знайдено</div>`;
-    productsEl.querySelectorAll(".card").forEach((el, index) => {
-      el.style.opacity = "0";
-      el.style.transform = "translateY(14px)";
-      requestAnimationFrame(() => {
-        el.style.transition = `opacity .4s ease ${Math.min(index * 45, 260)}ms, transform .4s ease ${Math.min(index * 45, 260)}ms`;
-        el.style.opacity = "1";
-        el.style.transform = "none";
-      });
-    });
+    const [result, facetData] = await Promise.all([
+      api("/api/products?" + params.toString()),
+      category ? api("/api/products/facets?category=" + encodeURIComponent(category)) : Promise.resolve(null),
+    ]);
+    if (currentRequest !== requestId) return;
+    const products = result.products || result;
+    total = result.total ?? products.length;
+    window.__products = append ? [...(window.__products || []), ...products] : products;
+    productsEl.insertAdjacentHTML("beforeend", products.length ? products.map(card).join("") : `<div class="empty">Нічого не знайдено</div>`);
+    if (facetData) renderFacets(facetData);
+    countEl.textContent = `Показано ${Math.min(offset + products.length, total)} з ${total} товарів`;
+    moreEl.hidden = offset + products.length >= total;
   } catch (error) {
-    productsEl.innerHTML = `<div class="empty">${error.message}</div>`;
+    if (currentRequest === requestId) productsEl.innerHTML = `<div class="empty">${error.message}</div>`;
+  } finally {
+    if (currentRequest === requestId) {
+      productsEl.removeAttribute("aria-busy");
+      productsEl.classList.remove("is-loading");
+    }
   }
 }
 
@@ -83,7 +118,9 @@ try {
 
 function selectCategory(chip) {
   category = chip.dataset.category;
+  for (const key of Object.keys(selectedFilters)) delete selectedFilters[key];
   document.querySelectorAll(".filters .chip").forEach((el) => el.classList.toggle("active", el.dataset.category === category));
+  facetsEl.innerHTML = "";
   load();
 }
 
@@ -100,8 +137,16 @@ document.querySelectorAll(".category-card[data-category]").forEach((card) => {
   });
 });
 
-searchEl.addEventListener("input", () => load());
+let searchTimer;
+searchEl.addEventListener("input", () => { clearTimeout(searchTimer); searchTimer = setTimeout(() => load(), 250); });
 sortEl.addEventListener("change", () => load());
+facetsEl.addEventListener("change", (event) => {
+  const input = event.target.closest("[data-filter]");
+  if (!input) return;
+  selectedFilters[input.dataset.filter] = input.type === "checkbox" ? input.checked : input.value;
+  load();
+});
+moreEl.addEventListener("click", () => { offset += pageSize; load({ append: true }); });
 
 productsEl.addEventListener("click", (e) => {
   const favorite = e.target.closest("[data-favorite]");
@@ -144,7 +189,7 @@ function showQuickView(product) {
       <div class="quick-view-copy">
         <p>${product.category.name}</p><h2>${product.name}</h2><span>${product.tagline}</span>
         <div class="quick-view-price">${formatPrice(product.price)}${product.oldPrice ? `<del>${formatPrice(product.oldPrice)}</del>` : ""}</div>
-        <small>${product.stock > 0 ? `● В наявності: ${product.stock} шт.` : "Під замовлення"}</small>
+        <small>${product.isAvailable ? "● В наявності" : "Під замовлення"}</small>
         <div><button class="btn" type="button" data-quick-add>У кошик <span>+</span></button><a class="btn ghost" href="/product.html?slug=${product.slug}">Усі деталі →</a></div>
       </div>
     </section>`;

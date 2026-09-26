@@ -31,7 +31,7 @@ export async function createOrder({
       const { rows } = await client.query("SELECT * FROM products WHERE id = $1 FOR UPDATE", [item.id]);
       const product = rows[0];
       if (!product) throw new Error("Один із товарів більше недоступний");
-      if (product.stock < qty) throw new Error(`Недостатньо на складі: ${product.name}`);
+      if (product.source === "jabko" ? !product.source_available : product.stock < qty) throw new Error(`${product.source === "jabko" ? "Товар тимчасово недоступний" : "Недостатньо на складі"}: ${product.name}`);
       total += product.price * qty;
       lines.push({ product, qty });
     }
@@ -76,10 +76,9 @@ export async function createOrder({
          VALUES ($1,$2,$3,$4,$5)`,
         [order.id, line.product.id, line.product.name, line.qty, line.product.price]
       );
-      await client.query("UPDATE products SET stock = stock - $1, updated_at = NOW() WHERE id = $2", [
-        line.qty,
-        line.product.id,
-      ]);
+      if (line.product.source !== "jabko") {
+        await client.query("UPDATE products SET stock = stock - $1, updated_at = NOW() WHERE id = $2", [line.qty, line.product.id]);
+      }
     }
 
     await logActivity({

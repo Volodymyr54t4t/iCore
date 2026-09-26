@@ -13,6 +13,7 @@ import { publicRouter } from "./routes/public.js";
 import { adminRouter } from "./routes/admin.js";
 import { accountRouter } from "./routes/account.js";
 import { startTelegramBot } from "./telegram/bot.js";
+import { startWeeklyJabkoSync } from "./services/weeklyJabkoSync.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -92,6 +93,7 @@ function openBrowser(url) {
 async function start() {
   await createPool();
   await initDatabase();
+  startWeeklyJabkoSync();
 
   const preferred = Number(process.env.PORT) || 3000;
   const port = await resolvePort(preferred);

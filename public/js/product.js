@@ -26,10 +26,10 @@ try {
         <div class="specs">
           <div>Колір: ${p.color || "—"}</div>
           <div>Конфігурація: ${p.storage || "—"}</div>
-          <div>На складі: ${p.stock} шт.</div>
+          <div>${p.isAvailable ? "Є в наявності" : "Немає в наявності"}</div>
         </div>
         <div class="row" style="margin-top:24px">
-          <button class="btn" id="buy" ${p.stock < 1 ? "disabled" : ""}>Додати в кошик</button>
+          <button class="btn" id="buy" ${p.isAvailable ? "" : "disabled"}>Додати в кошик</button>
           <a class="btn ghost" href="/cart.html">Перейти до кошика</a>
           <button class="share-product" id="share" type="button">↗ Поділитися</button>
         </div>

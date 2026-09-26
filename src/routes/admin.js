@@ -7,8 +7,11 @@ import { asyncHandler } from "../utils/async.js";
 import { logActivity } from "../services/activity.js";
 import { notifySubscribers, sendNewsletterMessage } from "../services/newsletter.js";
 import { isSmtpConfigured } from "../services/contactMail.js";
+import { runJabkoImport, jabkoImportSettings, isJabkoImportRunning } from "../services/jabkoImport.js";
+import { getWeeklyJabkoJob } from "../services/weeklyJabkoSync.js";
 
 export const adminRouter = Router();
+let jabkoJob = null;
 
 async function audit(req, action, entityType, entityId = null, details = {}) {
   // A non-critical audit failure must never prevent a business operation such as
@@ -54,6 +57,12 @@ function mapProduct(row) {
     categoryId: row.category_id,
     categoryName: row.category_name,
     categorySlug: row.category_slug,
+    isActive: row.is_active !== false,
+    source: row.source || "manual",
+    sourceAvailable: row.source === "jabko" ? row.source_available : row.stock > 0,
+    sourcePrice: row.source_price,
+    costPrice: row.cost_price ?? row.source_price,
+    markupPercent: row.markup_percent,
   };
 }
 
@@ -87,6 +96,37 @@ adminRouter.get("/me", requireAdmin, (req, res) => {
   res.json(req.admin);
 });
 
+adminRouter.get("/jabko-import", requireAdmin, asyncHandler(async (_req, res) => {
+  const { rows } = await pool.query("SELECT id,status,stats,started_at,finished_at FROM catalog_import_runs WHERE source='jabko' ORDER BY id DESC LIMIT 1");
+  const latest = rows[0] || null;
+  const databaseJob = latest && !latest.finished_at && ["collecting", "product-pages", "database"].includes(latest.status)
+    ? { id: latest.id, status: latest.status, phase: latest.status, stats: latest.stats, startedAt: latest.started_at }
+    : null;
+  res.json({ active: jabkoJob || getWeeklyJabkoJob() || databaseJob, lastRun: latest, settings: await jabkoImportSettings() });
+}));
+
+adminRouter.post("/jabko-import", requireAdmin, asyncHandler(async (req, res) => {
+  if (isJabkoImportRunning() || jabkoJob && ["collecting", "product-pages", "database"].includes(jabkoJob.status)) return res.status(409).json({ error: "Імпорт уже виконується" });
+  const test = req.body?.test === true;
+  const { rows } = await pool.query(`INSERT INTO catalog_import_runs (source,status,stats) VALUES ('jabko',$1,'{}'::jsonb) RETURNING id,started_at`, [test ? "testing" : "collecting"]);
+  const run = rows[0];
+  jabkoJob = { id: run.id, status: test ? "testing" : "collecting", phase: "collecting", current: 0, total: 0, stats: {}, startedAt: run.started_at, error: "" };
+  res.status(202).json({ id: run.id, status: jabkoJob.status });
+  runJabkoImport({
+    dryRun: test,
+    limit: test ? 3 : 0,
+    onProgress: (progress) => { jabkoJob = { ...jabkoJob, status: progress.phase, ...progress }; },
+  }).then(async (stats) => {
+    const status = test ? "tested" : "completed";
+    await pool.query("UPDATE catalog_import_runs SET status=$1,stats=$2::jsonb,finished_at=NOW() WHERE id=$3", [status, JSON.stringify(stats), run.id]);
+    jabkoJob = { ...jabkoJob, status, phase: status, stats, finishedAt: new Date().toISOString() };
+  }).catch(async (error) => {
+    console.error("Імпорт Ябко:", error);
+    await pool.query("UPDATE catalog_import_runs SET status='failed',stats=$1::jsonb,finished_at=NOW() WHERE id=$2", [JSON.stringify({ ...(jabkoJob?.stats || {}), error: error.message }), run.id]).catch(() => {});
+    jabkoJob = { ...jabkoJob, status: "failed", phase: "failed", error: error.message, finishedAt: new Date().toISOString() };
+  });
+}));
+
 adminRouter.get("/reviews", requireAdmin, asyncHandler(async (_req, res) => {
   const { rows } = await pool.query(`SELECT r.*, p.name AS product_name FROM product_reviews r
     JOIN products p ON p.id=r.product_id ORDER BY CASE r.status WHEN 'pending' THEN 0 ELSE 1 END, r.created_at DESC`);
@@ -115,7 +155,7 @@ adminRouter.get("/stats", requireAdmin, asyncHandler(async (_req, res) => {
     pool.query("SELECT COUNT(*)::int AS count FROM orders"),
     pool.query("SELECT COALESCE(SUM(total),0)::int AS sum FROM orders WHERE status <> 'cancelled'"),
     pool.query("SELECT COUNT(*)::int AS count FROM customers"),
-    pool.query("SELECT COUNT(*)::int AS count FROM products WHERE stock <= 5"),
+    pool.query("SELECT COUNT(*)::int AS count FROM products WHERE stock <= 5 AND source <> 'jabko' AND is_active=TRUE"),
     pool.query("SELECT id, customer_name, total, status, created_at FROM orders ORDER BY id DESC LIMIT 5"),
     pool.query(`SELECT TO_CHAR(day, 'DD Mon') AS label, COALESCE(SUM(total),0)::int AS total
       FROM generate_series(CURRENT_DATE - INTERVAL '6 days', CURRENT_DATE, INTERVAL '1 day') day
@@ -300,12 +340,13 @@ adminRouter.post("/products", requireAdmin, asyncHandler(async (req, res) => {
   if (required.some((key) => body[key] === undefined || body[key] === "")) {
     return res.status(400).json({ error: "Заповніть обовʼязкові поля товару" });
   }
+  if (body.costPrice != null && (!Number.isInteger(Number(body.costPrice)) || Number(body.costPrice) < 0)) return res.status(400).json({ error: "Собівартість має бути цілим невідʼємним числом" });
 
   try {
     const { rows } = await pool.query(
       `INSERT INTO products
-        (category_id, slug, name, tagline, description, price, old_price, color, storage, stock, image_url, featured)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+        (category_id, slug, name, tagline, description, price, old_price, color, storage, stock, image_url, featured, cost_price)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
        RETURNING *`,
       [
         body.categoryId,
@@ -320,6 +361,7 @@ adminRouter.post("/products", requireAdmin, asyncHandler(async (req, res) => {
         Number(body.stock),
         body.imageUrl || "",
         Boolean(body.featured),
+        body.costPrice === "" || body.costPrice == null ? null : Number(body.costPrice),
       ]
     );
     await audit(req, "Створив товар", "product", rows[0].id, { name: rows[0].name });
@@ -333,6 +375,7 @@ adminRouter.post("/products", requireAdmin, asyncHandler(async (req, res) => {
 
 adminRouter.put("/products/:id", requireAdmin, asyncHandler(async (req, res) => {
   const body = req.body || {};
+  if (body.costPrice != null && (!Number.isInteger(Number(body.costPrice)) || Number(body.costPrice) < 0)) return res.status(400).json({ error: "Собівартість має бути цілим невідʼємним числом" });
   try {
     const { rows: previousRows } = await pool.query("SELECT price FROM products WHERE id = $1", [req.params.id]);
     if (!previousRows[0]) return res.status(404).json({ error: "Товар не знайдено" });
@@ -341,8 +384,8 @@ adminRouter.put("/products/:id", requireAdmin, asyncHandler(async (req, res) => 
       `UPDATE products SET
          category_id = $1, slug = $2, name = $3, tagline = $4, description = $5,
          price = $6, old_price = $7, color = $8, storage = $9, stock = $10,
-         image_url = $11, featured = $12, updated_at = NOW()
-       WHERE id = $13 RETURNING *`,
+         image_url = $11, featured = $12, cost_price = $13, updated_at = NOW()
+       WHERE id = $14 RETURNING *`,
       [
         body.categoryId,
         String(body.slug).trim(),
@@ -356,6 +399,7 @@ adminRouter.put("/products/:id", requireAdmin, asyncHandler(async (req, res) => 
         Number(body.stock),
         body.imageUrl || "",
         Boolean(body.featured),
+        body.costPrice === "" || body.costPrice == null ? null : Number(body.costPrice),
         req.params.id,
       ]
     );

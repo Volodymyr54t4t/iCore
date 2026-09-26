@@ -208,10 +208,7 @@ accountRouter.patch("/orders/:id/cancel", requireCustomer, asyncHandler(async (r
     );
     for (const item of items) {
       if (!item.product_id) continue;
-      await client.query("UPDATE products SET stock = stock + $1, updated_at = NOW() WHERE id = $2", [
-        item.quantity,
-        item.product_id,
-      ]);
+      await client.query("UPDATE products SET stock = stock + $1, updated_at = NOW() WHERE id = $2 AND source <> 'jabko'", [item.quantity, item.product_id]);
     }
     await client.query("UPDATE orders SET status = 'cancelled' WHERE id = $1", [order.id]);
     await logActivity({ actorType: "customer", actorId: req.customer.id, actorName: req.customer.name || order.customer_name, action: "Скасував замовлення", entityType: "order", entityId: order.id, db: client });

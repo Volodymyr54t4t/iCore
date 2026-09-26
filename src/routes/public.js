@@ -58,8 +58,10 @@ function mapProduct(row) {
     color: row.color,
     storage: row.storage,
     stock: row.stock,
+    specifications: row.specifications || {},
     imageUrl: row.image_url,
     featured: row.featured,
+    isAvailable: row.source === "jabko" ? row.source_available : row.stock > 0,
     category: {
       id: row.category_id,
       slug: row.category_slug,
@@ -76,7 +78,8 @@ const PRODUCT_SELECT = `
 
 publicRouter.get("/categories", asyncHandler(async (_req, res) => {
   const { rows } = await pool.query(
-    "SELECT id, slug, name FROM categories ORDER BY sort_order, id"
+    "SELECT id, slug, name FROM categories WHERE slug = ANY($1::text[]) ORDER BY array_position($1::text[], slug)",
+    [["iphone", "airpods", "mac"]]
   );
   res.json(rows);
 }));
@@ -132,9 +135,9 @@ publicRouter.get("/newsletter/unsubscribe", asyncHandler(async (req, res) => {
 }));
 
 publicRouter.get("/products", asyncHandler(async (req, res) => {
-  const { category, q, sort, featured } = req.query;
+  const { category, q, sort, featured, capacity, sim, color, available } = req.query;
   const params = [];
-  const where = [];
+  const where = ["p.is_active = TRUE"];
 
   if (category) {
     params.push(category);
@@ -147,19 +150,61 @@ publicRouter.get("/products", asyncHandler(async (req, res) => {
   if (featured === "1") {
     where.push("p.featured = TRUE");
   }
+  if (capacity) { params.push("Об'єм пам'яті", String(capacity)); where.push(`p.specifications->>$${params.length - 1} = $${params.length}`); }
+  if (sim) { params.push("Формат SIM-карти", String(sim)); where.push(`p.specifications->>$${params.length - 1} = $${params.length}`); }
+  if (color) { params.push("Колір пристрою", String(color), String(color)); where.push(`(p.specifications->>$${params.length - 2} = $${params.length - 1} OR p.color = $${params.length})`); }
+  if (available === "1") where.push("(CASE WHEN p.source = 'jabko' THEN p.source_available ELSE p.stock > 0 END) = TRUE");
+  for (const [key, value] of Object.entries(req.query)) {
+    if (!key.startsWith("spec:") || typeof value !== "string" || !value) continue;
+    params.push(key.slice(5), value);
+    where.push(`p.specifications->>$${params.length - 1} = $${params.length}`);
+  }
 
   let order = "p.featured DESC, p.id DESC";
   if (sort === "price_asc") order = "p.price ASC";
   if (sort === "price_desc") order = "p.price DESC";
   if (sort === "name") order = "p.name ASC";
+  if (sort === "availability") order = "(CASE WHEN p.source = 'jabko' THEN p.source_available ELSE p.stock > 0 END) DESC, p.featured DESC, p.id DESC";
 
   const sql = `${PRODUCT_SELECT} ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY ${order}`;
+  if (req.query.limit !== undefined) {
+    const limit = Math.min(60, Math.max(1, Number.parseInt(req.query.limit, 10) || 24));
+    const offset = Math.max(0, Number.parseInt(req.query.offset, 10) || 0);
+    const countSql = `SELECT COUNT(*)::int AS total FROM products p JOIN categories c ON c.id=p.category_id WHERE ${where.join(" AND ")}`;
+    const [{ rows: countRows }, { rows }] = await Promise.all([
+      pool.query(countSql, params),
+      pool.query(`${sql} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`, [...params, limit, offset]),
+    ]);
+    return res.json({ products: rows.map(mapProduct), total: countRows[0].total, limit, offset });
+  }
   const { rows } = await pool.query(sql, params);
   res.json(rows.map(mapProduct));
 }));
 
+publicRouter.get("/products/facets", asyncHandler(async (req, res) => {
+  const category = String(req.query.category || "");
+  const { rows } = await pool.query(`SELECT p.specifications, p.color, p.source, p.source_available, p.stock
+    FROM products p JOIN categories c ON c.id=p.category_id WHERE p.is_active=TRUE AND c.slug=$1`, [category]);
+  const discoveredKeys = new Set(["Об'єм пам'яті", "Формат SIM-карти", "Колір пристрою", "Оперативна пам'ять", "Діагональ дисплея", "Тип підключення", "Тип кейсу"]);
+  for (const row of rows) {
+    for (const key of Object.keys(row.specifications || {})) {
+      if (/пам'ят|sim|колір|диспле|підключ|кейсу/i.test(key)) discoveredKeys.add(key);
+    }
+  }
+  const facets = {};
+  for (const key of discoveredKeys) {
+    const counts = new Map();
+    for (const row of rows) {
+      const value = row.specifications?.[key] || (key === "Колір пристрою" ? row.color : null);
+      if (typeof value === "string" && value.trim()) counts.set(value.trim(), (counts.get(value.trim()) || 0) + 1);
+    }
+    if (counts.size) facets[key] = [...counts].map(([value, count]) => ({ value, count })).sort((a,b) => a.value.localeCompare(b.value, "uk"));
+  }
+  res.json({ facets, availability: rows.reduce((sum, row) => sum + (row.source === "jabko" ? row.source_available : row.stock > 0 ? 1 : 0), 0), total: rows.length });
+}));
+
 publicRouter.get("/products/:slug", asyncHandler(async (req, res) => {
-  const { rows } = await pool.query(`${PRODUCT_SELECT} WHERE p.slug = $1`, [req.params.slug]);
+  const { rows } = await pool.query(`${PRODUCT_SELECT} WHERE p.slug = $1 AND p.is_active = TRUE`, [req.params.slug]);
   if (!rows[0]) return res.status(404).json({ error: "Товар не знайдено" });
   res.json(mapProduct(rows[0]));
 }));
