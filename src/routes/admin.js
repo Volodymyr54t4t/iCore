@@ -9,9 +9,97 @@ import { notifySubscribers, sendNewsletterMessage } from "../services/newsletter
 import { isSmtpConfigured } from "../services/contactMail.js";
 import { reserveJabkoImport, jabkoImportSettings } from "../services/jabkoImport.js";
 import { getWeeklyJabkoJob } from "../services/weeklyJabkoSync.js";
+import { aiConfig, recordAiOperation, safeOpenAIError, selectAndDraftProducts, testOpenAI } from "../services/openaiService.js";
+import { generateDailyBatchNow } from "../services/telegramPostScheduler.js";
 
 export const adminRouter = Router();
 let jabkoJob = null;
+
+function customAiModelPrices() {
+  const input = process.env.OPENAI_INPUT_PRICE_PER_MILLION?.trim();
+  const output = process.env.OPENAI_OUTPUT_PRICE_PER_MILLION?.trim();
+  return input && output && Number.isFinite(Number(input)) && Number.isFinite(Number(output))
+    ? [Number(input), Number(output)] : null;
+}
+
+adminRouter.get("/ai", requireAdmin, asyncHandler(async (_req, res) => {
+  const [{ rows: totals }, { rows: latest }, { rows: logs }] = await Promise.all([
+    pool.query(`SELECT COUNT(*) FILTER(WHERE status='success')::int AS requests,
+      COALESCE(SUM(processed_products) FILTER(WHERE status='success'),0)::int AS products,
+      COALESCE(SUM(input_tokens),0)::bigint AS input_tokens, COALESCE(SUM(output_tokens),0)::bigint AS output_tokens,
+      COALESCE(SUM(total_tokens),0)::bigint AS total_tokens FROM ai_operation_logs`),
+    pool.query("SELECT operation,created_at,status,error,model,input_tokens,output_tokens,total_tokens FROM ai_operation_logs ORDER BY id DESC LIMIT 1"),
+    pool.query("SELECT id,operation,processed_products,model,input_tokens,output_tokens,total_tokens,status,error,created_at FROM ai_operation_logs ORDER BY id DESC LIMIT 30"),
+  ]);
+  const { rows: posts } = await pool.query("SELECT COUNT(*)::int AS count FROM scheduled_telegram_posts");
+  const [{ rows: scheduled }, { rows: batches }] = await Promise.all([
+    pool.query(`SELECT s.id,s.batch_date,s.product_name,s.telegram_text,s.status,s.scheduled_at,s.sent_at,s.error,
+      p.slug,p.source_url FROM scheduled_telegram_posts s LEFT JOIN products p ON p.id=s.product_id
+      ORDER BY s.scheduled_at DESC LIMIT 40`),
+    pool.query("SELECT batch_date,status,error,created_at FROM ai_daily_batches ORDER BY batch_date DESC LIMIT 7"),
+  ]);
+  const { rows: usageByModel } = await pool.query("SELECT model,SUM(input_tokens) AS input,SUM(output_tokens) AS output FROM ai_operation_logs GROUP BY model");
+  const budgetUsd = Math.max(0.1, Number(process.env.OPENAI_BUDGET_USD) || 4.5);
+  const estimatedSpend = usageByModel.reduce((total, row) => {
+    const prices = String(row.model).includes("gpt-4.1-mini") ? [0.4, 1.6] : String(row.model).includes("gpt-4o-mini") ? [0.15, 0.6] : customAiModelPrices();
+    return total + (prices ? Number(row.input) * prices[0] / 1_000_000 + Number(row.output) * prices[1] / 1_000_000 : budgetUsd);
+  }, 0);
+  const telegramChatLink = /^https:\/\/t\.me\/[A-Za-z0-9_+/-]+$/.test(process.env.TELEGRAM_CHAT_LINK || "") ? process.env.TELEGRAM_CHAT_LINK : "";
+  res.json({ ...aiConfig(), systemPrompt: undefined, telegramChatLink, totals: totals[0], generatedPosts: posts[0].count, latest: latest[0] || null, logs, scheduled, batches, estimatedSpend, budgetUsd });
+}));
+
+adminRouter.post("/ai/generate-daily", requireAdmin, asyncHandler(async (_req, res) => {
+  const result = await generateDailyBatchNow();
+  if (result.status !== "ready") return res.status(409).json({ error: result.error || `Пакет постів має статус «${result.status}».` });
+  res.json({ ok: true, batchDate: result.batchDate, message: `10 постів підготовлено на ${result.batchDate}.` });
+}));
+
+adminRouter.post("/ai/test", requireAdmin, asyncHandler(async (_req, res) => {
+  try {
+    const result = await testOpenAI();
+    await recordAiOperation({ operation: "connection_test", model: result.model, usage: result.usage, status: "success" });
+    res.json({ ok: true, message: "OpenAI API підключено успішно.", model: result.model });
+  } catch (error) {
+    const message = safeOpenAIError(error);
+    await recordAiOperation({ operation: "connection_test", status: "failed", error: message });
+    res.status(502).json({ error: message });
+  }
+}));
+
+adminRouter.post("/ai/publish", requireAdmin, asyncHandler(async (_req, res) => {
+  const { rows: products } = await pool.query(`SELECT p.id,p.name,p.tagline,p.description,p.price,p.old_price,p.color,p.storage,
+      p.stock,p.source_available,p.source_url,p.slug,p.specifications,c.name AS category_name,
+      EXISTS(SELECT 1 FROM telegram_product_posts t WHERE t.product_id=p.id) AS previously_published
+    FROM products p JOIN categories c ON c.id=p.category_id
+    WHERE p.is_active=TRUE AND p.price>0 AND (CASE WHEN p.source='jabko' THEN p.source_available ELSE p.stock>0 END)
+      AND NOT EXISTS(SELECT 1 FROM telegram_product_posts t WHERE t.product_id=p.id)
+    ORDER BY p.featured DESC,p.updated_at DESC LIMIT 50`);
+  if (!products.length) return res.status(409).json({ error: "Немає доступних неопублікованих товарів для AI-аналізу." });
+  if (!process.env.TELEGRAM_BOT_TOKEN || !process.env.TELEGRAM_CHAT_ID) return res.status(503).json({ error: "Налаштуйте TELEGRAM_BOT_TOKEN і TELEGRAM_CHAT_ID у .env." });
+  const normalized = products.map((p) => ({ ...p, available: true, url: p.source_url || `${process.env.PUBLIC_URL || "http://localhost:3000"}/product.html?slug=${encodeURIComponent(p.slug)}` }));
+  let op;
+  try {
+    const draft = await selectAndDraftProducts(normalized);
+    op = await recordAiOperation({ operation: "select_and_generate", processed: draft.processed, model: draft.model, usage: draft.usage, status: "success" });
+    const sent = [];
+    for (const item of draft.selected) {
+      const product = normalized.find((p) => p.id === item.id);
+      const tg = await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chat_id: process.env.TELEGRAM_CHAT_ID, text: item.telegram_text, disable_web_page_preview: false }), signal: AbortSignal.timeout(20000),
+      });
+      const result = await tg.json().catch(() => ({}));
+      if (!tg.ok || !result.ok) throw new Error("Telegram не прийняв повідомлення");
+      await pool.query("INSERT INTO telegram_product_posts(product_id,ai_log_id,telegram_text,telegram_message_id) VALUES($1,$2,$3,$4)", [item.id, op.id, item.telegram_text, result.result?.message_id || null]);
+      sent.push({ id: item.id, name: product.name });
+    }
+    res.json({ ok: true, processed: draft.processed, sent, selected: draft.selected.length });
+  } catch (error) {
+    const message = safeOpenAIError(error);
+    await recordAiOperation({ operation: "select_and_generate", processed: products.length, status: "failed", error: message }).catch(() => {});
+    res.status(502).json({ error: message });
+  }
+}));
 
 async function audit(req, action, entityType, entityId = null, details = {}) {
   // A non-critical audit failure must never prevent a business operation such as

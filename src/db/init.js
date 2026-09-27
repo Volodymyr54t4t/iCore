@@ -148,6 +148,30 @@ CREATE TABLE IF NOT EXISTS system_flags (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS ai_operation_logs (
+  id BIGSERIAL PRIMARY KEY, operation TEXT NOT NULL, processed_products INTEGER NOT NULL DEFAULT 0,
+  model TEXT NOT NULL DEFAULT '', input_tokens INTEGER NOT NULL DEFAULT 0, output_tokens INTEGER NOT NULL DEFAULT 0,
+  total_tokens INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL, error TEXT NOT NULL DEFAULT '',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS telegram_product_posts (
+  id BIGSERIAL PRIMARY KEY, product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  ai_log_id BIGINT REFERENCES ai_operation_logs(id) ON DELETE SET NULL, telegram_text TEXT NOT NULL,
+  telegram_message_id BIGINT, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS telegram_product_posts_product_idx ON telegram_product_posts(product_id, created_at DESC);
+CREATE TABLE IF NOT EXISTS scheduled_telegram_posts (
+  id BIGSERIAL PRIMARY KEY, batch_date DATE NOT NULL, product_id INTEGER REFERENCES products(id) ON DELETE SET NULL,
+  product_name TEXT NOT NULL, telegram_text TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'scheduled',
+  scheduled_at TIMESTAMPTZ NOT NULL, sent_at TIMESTAMPTZ, telegram_message_id BIGINT,
+  ai_log_id BIGINT REFERENCES ai_operation_logs(id) ON DELETE SET NULL, error TEXT NOT NULL DEFAULT '',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS scheduled_telegram_posts_due_idx ON scheduled_telegram_posts(status, scheduled_at);
+CREATE TABLE IF NOT EXISTS ai_daily_batches (
+  batch_date DATE PRIMARY KEY, status TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), error TEXT NOT NULL DEFAULT ''
+);
+
 CREATE INDEX IF NOT EXISTS activity_log_created_at_idx ON activity_log (created_at DESC);
 CREATE INDEX IF NOT EXISTS activity_log_actor_idx ON activity_log (actor_type, actor_id);
 CREATE INDEX IF NOT EXISTS newsletter_subscribers_active_idx ON newsletter_subscribers (is_active);
