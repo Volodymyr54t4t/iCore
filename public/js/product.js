@@ -6,6 +6,36 @@ const slug = new URLSearchParams(location.search).get("slug");
 const page = document.getElementById("page");
 const esc = (value = "") => String(value).replace(/[&<>\"']/g, (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", "\"":"&quot;", "'":"&#39;" }[c]));
 const stars = (value) => "★".repeat(Number(value)) + "☆".repeat(5 - Number(value));
+const descriptionHeadings = [
+  "Яскравий дисплей Liquid Retina",
+  "Найтонший у світі Дизайн",
+  "Неперевершена продуктивність М3",
+  "Фото, відео, дзвінки: висока якість у всьому",
+  "Особливі можливості операційної системи",
+  "Дисплей", "Дизайн", "Продуктивність", "Камера та звук", "Автономність", "Особливості", "Підключення",
+];
+
+function renderDescription(value = "") {
+  const text = String(value).replace(/\s+/g, " ").trim();
+  if (!text) return "";
+  const headingPattern = new RegExp(`(${descriptionHeadings.sort((a, b) => b.length - a.length).join("|")})`, "gi");
+  const sections = [];
+  let cursor = 0;
+  let match;
+  while ((match = headingPattern.exec(text))) {
+    const body = text.slice(cursor, match.index).trim();
+    if (body) sections.push({ title: sections.length ? "" : "Огляд", body });
+    sections.push({ title: match[0], body: "" });
+    cursor = headingPattern.lastIndex;
+  }
+  if (sections.length) {
+    const tail = text.slice(cursor).trim();
+    if (tail) sections.at(-1).body = tail;
+  } else {
+    sections.push({ title: "Про пристрій", body: text });
+  }
+  return `<div class="product-description">${sections.filter((section) => section.body).map((section) => `<article class="description-block">${section.title ? `<h3>${esc(section.title)}</h3>` : ""}<p>${esc(section.body).replace(/(?<=[.!?])\s+(?=[А-ЯІЇЄA-Z0-9])/g, "</p><p>")}</p></article>`).join("")}</div>`;
+}
 
 try {
   const p = await api("/api/products/" + encodeURIComponent(slug));
@@ -20,7 +50,7 @@ try {
         <div class="product-detail-top"><p class="muted">${p.category.name}</p><button class="detail-favorite ${isFavorite(p.id) ? "is-active" : ""}" type="button" id="favorite" aria-label="Додати в обране">♥</button></div>
         <h1 class="section-title">${p.name}</h1>
         <p>${p.tagline}</p>
-        <p>${p.description}</p>
+        ${renderDescription(p.description)}
         <div class="price" style="font-size:28px;margin:18px 0">${formatPrice(p.price)}${p.oldPrice ? `<span class="old">${formatPrice(p.oldPrice)}</span>` : ""}</div>
         <div class="product-perks"><span>✓ Офіційна гарантія</span><span>✓ Відправимо сьогодні</span><span>✓ Оплата частинами</span></div>
         <div class="specs">
