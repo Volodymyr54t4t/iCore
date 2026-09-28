@@ -159,6 +159,7 @@ export function nav(me = null) {
         </nav>
         <div class="nav-spacer"></div>
         ${account}
+        <a class="tracking-link" href="/track-order.html" aria-label="Мої замовлення" title="Мої замовлення"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5z"/><path d="M4 5.5v15M8 7h8M8 10h6"/><circle cx="18" cy="18" r="4" fill="#101218"/><path d="m16.5 18 1 1 2-2"/></svg><span>Мої замовлення</span></a>
         <a class="wishlist-link" href="/favorites.html" aria-label="Обране">Обране <b class="badge" data-wishlist-count hidden>0</b></a>
         <a class="cart-link" href="/cart.html">Кошик <b class="badge" data-cart-count hidden>0</b></a>
       </div>

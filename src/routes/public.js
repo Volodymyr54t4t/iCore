@@ -16,6 +16,16 @@ export const publicRouter = Router();
 const contactAttempts = new Map();
 const subscribeAttempts = new Map();
 const reviewAttempts = new Map();
+const orderLookupAttempts = new Map();
+
+function allowOrderLookup(ip) {
+  const now = Date.now();
+  const attempts = (orderLookupAttempts.get(ip) || []).filter((time) => now - time < 60 * 60 * 1000);
+  if (attempts.length >= 5) return false;
+  attempts.push(now);
+  orderLookupAttempts.set(ip, attempts);
+  return true;
+}
 
 function allowReviewRequest(ip) {
   const now = Date.now();
@@ -287,6 +297,35 @@ publicRouter.post("/orders", asyncHandler(async (req, res) => {
   } catch (error) {
     res.status(400).json({ error: error.message || "Не вдалося оформити замовлення" });
   }
+}));
+
+publicRouter.post("/orders/lookup", asyncHandler(async (req, res) => {
+  res.set("Cache-Control", "no-store");
+  const customer = readCustomer(req);
+  if (!customer && !allowOrderLookup(req.ip)) return res.status(429).json({ error: "Забагато спроб. Спробуйте ще раз за годину." });
+  const email = String(req.body?.email || "").trim().toLowerCase();
+  const phone = String(req.body?.phone || "").replace(/\D/g, "");
+  if (!customer && (email.length > 150 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || phone.length < 9 || phone.length > 15)) {
+    return res.status(400).json({ error: "Вкажіть email і телефон, які ви використали під час оформлення." });
+  }
+
+  const query = `SELECT o.id,o.status,o.total,o.created_at,o.payment_token,
+      (SELECT COUNT(*)::int FROM order_items oi WHERE oi.order_id=o.id) AS item_count
+    FROM orders o`;
+  const { rows } = customer
+    ? await pool.query(`${query} WHERE o.customer_id=$1 ORDER BY o.created_at DESC`, [customer.id])
+    : await pool.query(`${query}
+      WHERE LOWER(BTRIM(o.customer_email))=$1
+        AND REGEXP_REPLACE(o.customer_phone,'[^0-9]','','g')=$2
+      ORDER BY o.created_at DESC`, [email, phone]);
+  res.json({ orders: rows.map((order) => ({
+    id: order.id,
+    status: order.status,
+    total: order.total,
+    createdAt: order.created_at,
+    itemCount: order.item_count,
+    trackingUrl: `/track-order.html?order=${encodeURIComponent(order.id)}&token=${encodeURIComponent(order.payment_token)}`,
+  })) });
 }));
 
 async function paymentOrder(id, token) {
