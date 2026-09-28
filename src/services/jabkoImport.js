@@ -17,6 +17,10 @@ function isUsedProduct(product) {
     .test(`${product.name || ""} ${product.sourceUrl || ""} ${description}`);
 }
 
+function isUltraWarrantyProduct(product) {
+  return /\(\s*ultra\s*\)\s*$/i.test(String(product.name || ""));
+}
+
 function decodeHtml(value = "") {
   return value
     .replace(/&(?:nbsp|ensp|emsp|thinsp);/gi, " ")
@@ -152,9 +156,25 @@ function parseProductPage(html, listing) {
   };
 }
 
+function standardVariantUrl(html, currentUrl) {
+  const anchor = [...html.matchAll(/<a\b[^>]*href\s*=\s*(["'])(.*?)\1[^>]*>([\s\S]*?)<\/a>/gi)]
+    .find((match) => plainText(match[3]).toLowerCase() === "standard");
+  if (!anchor) return "";
+  const url = new URL(decodeHtml(anchor[2]), currentUrl);
+  return url.protocol === "https:" && url.hostname === "jabko.ua" ? url.href : "";
+}
+
 async function enrichProduct(listing) {
-  const html = await getHtml(listing.sourceUrl);
-  return parseProductPage(html, listing);
+  let sourceUrl = listing.sourceUrl;
+  let html = await getHtml(sourceUrl);
+  if (isUltraWarrantyProduct({ name: listing.name })) {
+    const standardUrl = standardVariantUrl(html, sourceUrl);
+    if (!standardUrl || standardUrl === sourceUrl) return null;
+    sourceUrl = standardUrl;
+    html = await getHtml(sourceUrl);
+  }
+  const product = parseProductPage(html, { ...listing, sourceUrl });
+  return isUltraWarrantyProduct(product) ? null : product;
 }
 
 function markupFor(category, product = {}) {
@@ -258,6 +278,10 @@ async function runJabkoImportInternal({ limit = 0, dryRun = false, onProgress = 
       const listing = uniqueListings[index];
       try {
         const product = await enrichProduct(listing);
+        if (!product || isUltraWarrantyProduct(product)) {
+          stats.skipped += 1;
+          continue;
+        }
         if (isUsedProduct(product)) {
           stats.skipped += 1;
           continue;
@@ -305,6 +329,11 @@ async function runJabkoImportInternal({ limit = 0, dryRun = false, onProgress = 
       const ids = uniqueListings.filter((item) => item.category === category.slug).map((item) => item.sourceId);
       if (ids.length) await pool.query("UPDATE products SET is_active=FALSE, source_available=FALSE, stock=0, updated_at=NOW() WHERE source='jabko' AND category_id=$1 AND NOT (source_id = ANY($2::text[]))", [categoryIds[category.slug], ids]);
     }
+    const removedUltra = await pool.query(
+      "DELETE FROM products WHERE source='jabko' AND name ~* $1 RETURNING id",
+      ["\\(\\s*ultra\\s*\\)\\s*$"]
+    );
+    stats.removedUltraWarranty = removedUltra.rowCount;
   }
   return stats;
 }

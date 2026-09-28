@@ -1,5 +1,5 @@
 import { pool } from "../db/pool.js";
-import { aiConfig, recordAiOperation, safeOpenAIError, selectAndDraftProducts } from "./openaiService.js";
+import { aiConfig, cleanTelegramPost, recordAiOperation, safeOpenAIError, selectAndDraftProducts, shopProductUrl } from "./openaiService.js";
 
 const TIME_ZONE = "Europe/Kyiv";
 const DAILY_COUNT = 10;
@@ -65,7 +65,7 @@ async function createDailyBatch(batchDate, force = false) {
   let processedCount = 0;
   try {
     const { rows: products } = await pool.query(`SELECT p.id,p.name,p.tagline,p.description,p.price,p.old_price,p.color,p.storage,
-      p.source_url,p.slug,p.specifications,c.name AS category_name,
+      p.slug,p.specifications,c.name AS category_name,
       EXISTS(SELECT 1 FROM telegram_product_posts t WHERE t.product_id=p.id AND t.created_at>NOW()-INTERVAL '14 days') AS previously_published
       FROM products p JOIN categories c ON c.id=p.category_id
       WHERE p.is_active=TRUE AND p.price>0 AND (CASE WHEN p.source='jabko' THEN p.source_available ELSE p.stock>0 END)
@@ -73,8 +73,7 @@ async function createDailyBatch(batchDate, force = false) {
       AND NOT EXISTS(SELECT 1 FROM scheduled_telegram_posts t WHERE t.product_id=p.id AND t.status IN ('scheduled','sending'))
       ORDER BY p.featured DESC,p.updated_at DESC LIMIT 100`);
     if (products.length < DAILY_COUNT) throw Object.assign(new Error("Недостатньо товарів"), { publicMessage: `Для десяти різних постів потрібно щонайменше 10 придатних товарів; знайдено ${products.length}.` });
-    const baseUrl = String(process.env.PUBLIC_URL || process.env.SHOP_URL || "http://localhost:3000").replace(/\/$/, "");
-    const candidates = products.map((p) => ({ ...p, available: true, url: p.source_url || `${baseUrl}/product.html?slug=${encodeURIComponent(p.slug)}` }));
+    const candidates = products.map((p) => ({ ...p, available: true, url: shopProductUrl(p) }));
     let draft = await selectAndDraftProducts(candidates, DAILY_COUNT);
     usage = draft.usage || {};
     operationModel = draft.model || operationModel;
@@ -124,14 +123,19 @@ async function publishDuePosts() {
     RETURNING id,product_id,product_name,telegram_text,ai_log_id`);
   for (const post of rows) {
     try {
+      const { rows: productRows } = post.product_id
+        ? await pool.query("SELECT slug FROM products WHERE id=$1", [post.product_id])
+        : { rows: [] };
+      const telegramText = cleanTelegramPost(post.telegram_text, shopProductUrl(productRows[0] || {}));
+      await pool.query("UPDATE scheduled_telegram_posts SET telegram_text=$2 WHERE id=$1", [post.id, telegramText]);
       const response = await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ chat_id: process.env.TELEGRAM_CHAT_ID, text: post.telegram_text, disable_web_page_preview: false }), signal: AbortSignal.timeout(20000),
+        body: JSON.stringify({ chat_id: process.env.TELEGRAM_CHAT_ID, text: telegramText, disable_web_page_preview: false }), signal: AbortSignal.timeout(20000),
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok || !data.ok) throw new Error("Telegram не прийняв повідомлення");
       await pool.query("UPDATE scheduled_telegram_posts SET status='published',sent_at=NOW(),telegram_message_id=$2,error='' WHERE id=$1", [post.id, data.result?.message_id || null]);
-      if (post.product_id) await pool.query("INSERT INTO telegram_product_posts(product_id,ai_log_id,telegram_text,telegram_message_id) VALUES($1,$2,$3,$4)", [post.product_id, post.ai_log_id, post.telegram_text, data.result?.message_id || null]);
+      if (post.product_id) await pool.query("INSERT INTO telegram_product_posts(product_id,ai_log_id,telegram_text,telegram_message_id) VALUES($1,$2,$3,$4)", [post.product_id, post.ai_log_id, telegramText, data.result?.message_id || null]);
     } catch (error) {
       await pool.query("UPDATE scheduled_telegram_posts SET status='failed',error=$2 WHERE id=$1", [post.id, "Не вдалося надіслати пост у Telegram."]);
     }

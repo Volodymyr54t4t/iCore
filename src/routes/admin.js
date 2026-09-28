@@ -9,7 +9,7 @@ import { notifySubscribers, sendNewsletterMessage } from "../services/newsletter
 import { isSmtpConfigured } from "../services/contactMail.js";
 import { reserveJabkoImport, jabkoImportSettings } from "../services/jabkoImport.js";
 import { getWeeklyJabkoJob } from "../services/weeklyJabkoSync.js";
-import { aiConfig, recordAiOperation, safeOpenAIError, selectAndDraftProducts, testOpenAI } from "../services/openaiService.js";
+import { aiConfig, cleanTelegramPost, recordAiOperation, safeOpenAIError, selectAndDraftProducts, shopProductUrl, testOpenAI } from "../services/openaiService.js";
 import { generateDailyBatchNow } from "../services/telegramPostScheduler.js";
 
 export const adminRouter = Router();
@@ -33,8 +33,8 @@ adminRouter.get("/ai", requireAdmin, asyncHandler(async (_req, res) => {
   ]);
   const { rows: posts } = await pool.query("SELECT COUNT(*)::int AS count FROM scheduled_telegram_posts");
   const [{ rows: scheduled }, { rows: batches }] = await Promise.all([
-    pool.query(`SELECT s.id,s.batch_date,s.product_name,s.telegram_text,s.status,s.scheduled_at,s.sent_at,s.error,
-      p.slug,p.source_url FROM scheduled_telegram_posts s LEFT JOIN products p ON p.id=s.product_id
+    pool.query(`SELECT s.id,s.batch_date,s.product_name,s.telegram_text,s.status,s.scheduled_at,s.sent_at,s.error
+      FROM scheduled_telegram_posts s
       ORDER BY s.scheduled_at DESC LIMIT 40`),
     pool.query("SELECT batch_date,status,error,created_at FROM ai_daily_batches ORDER BY batch_date DESC LIMIT 7"),
   ]);
@@ -68,7 +68,7 @@ adminRouter.post("/ai/test", requireAdmin, asyncHandler(async (_req, res) => {
 
 adminRouter.post("/ai/publish", requireAdmin, asyncHandler(async (_req, res) => {
   const { rows: products } = await pool.query(`SELECT p.id,p.name,p.tagline,p.description,p.price,p.old_price,p.color,p.storage,
-      p.stock,p.source_available,p.source_url,p.slug,p.specifications,c.name AS category_name,
+      p.stock,p.source_available,p.slug,p.specifications,c.name AS category_name,
       EXISTS(SELECT 1 FROM telegram_product_posts t WHERE t.product_id=p.id) AS previously_published
     FROM products p JOIN categories c ON c.id=p.category_id
     WHERE p.is_active=TRUE AND p.price>0 AND (CASE WHEN p.source='jabko' THEN p.source_available ELSE p.stock>0 END)
@@ -76,7 +76,7 @@ adminRouter.post("/ai/publish", requireAdmin, asyncHandler(async (_req, res) => 
     ORDER BY p.featured DESC,p.updated_at DESC LIMIT 50`);
   if (!products.length) return res.status(409).json({ error: "Немає доступних неопублікованих товарів для AI-аналізу." });
   if (!process.env.TELEGRAM_BOT_TOKEN || !process.env.TELEGRAM_CHAT_ID) return res.status(503).json({ error: "Налаштуйте TELEGRAM_BOT_TOKEN і TELEGRAM_CHAT_ID у .env." });
-  const normalized = products.map((p) => ({ ...p, available: true, url: p.source_url || `${process.env.PUBLIC_URL || "http://localhost:3000"}/product.html?slug=${encodeURIComponent(p.slug)}` }));
+  const normalized = products.map((p) => ({ ...p, available: true, url: shopProductUrl(p) }));
   let op;
   try {
     const draft = await selectAndDraftProducts(normalized);
@@ -84,13 +84,14 @@ adminRouter.post("/ai/publish", requireAdmin, asyncHandler(async (_req, res) => 
     const sent = [];
     for (const item of draft.selected) {
       const product = normalized.find((p) => p.id === item.id);
+      const telegramText = cleanTelegramPost(item.telegram_text, shopProductUrl(product));
       const tg = await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ chat_id: process.env.TELEGRAM_CHAT_ID, text: item.telegram_text, disable_web_page_preview: false }), signal: AbortSignal.timeout(20000),
+        body: JSON.stringify({ chat_id: process.env.TELEGRAM_CHAT_ID, text: telegramText, disable_web_page_preview: false }), signal: AbortSignal.timeout(20000),
       });
       const result = await tg.json().catch(() => ({}));
       if (!tg.ok || !result.ok) throw new Error("Telegram не прийняв повідомлення");
-      await pool.query("INSERT INTO telegram_product_posts(product_id,ai_log_id,telegram_text,telegram_message_id) VALUES($1,$2,$3,$4)", [item.id, op.id, item.telegram_text, result.result?.message_id || null]);
+      await pool.query("INSERT INTO telegram_product_posts(product_id,ai_log_id,telegram_text,telegram_message_id) VALUES($1,$2,$3,$4)", [item.id, op.id, telegramText, result.result?.message_id || null]);
       sent.push({ id: item.id, name: product.name });
     }
     res.json({ ok: true, processed: draft.processed, sent, selected: draft.selected.length });
