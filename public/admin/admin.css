@@ -74,6 +74,14 @@ input:focus,select:focus,textarea:focus { border-color:#c7a45f!important; box-sh
 th,td { border-color:var(--line); }
 .modal,.modal-content,.dialog { border-color:var(--line); color:#f4efe4; background:#14120e; }
 .toast { border:1px solid var(--line); color:#f4efe4; background:#1a1710; }
+.payment-review { border:1px solid var(--line); background:#1b1710; }
+.payment-review small,.payment-wait { color:#b7ad99; }
+.payment-proof,.order-contact a:hover { color:#d8b873; }
+.order-payment-label select,.order-status-label select { border-color:var(--line); color:#e8dfcd; background:#100e0a; }
+.order-call-note { border:1px solid rgba(210,174,104,.16); color:#e5d4ac; background:#2b2214; }
+.order-foot { border-color:var(--line); }
+.order-receipt { display:inline-flex; align-items:center; margin-top:12px; padding:8px 11px; border:1px solid rgba(210,174,104,.24); border-radius:8px; color:#e8d19e; background:#1b1710; font-size:11px; font-weight:650; text-decoration:none; }
+.order-receipt:hover { border-color:#bd9a58; color:#fff0c9; background:#302617; }
 .login-wrap { color:#f4efe4; }
 .login-intro { background:transparent; }
 .login-brand { color:#f4efe4; font-size:20px; letter-spacing:.03em; }

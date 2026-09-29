@@ -1,4 +1,5 @@
 import { api, formatPrice, mountNav } from "./api.js";
+import { receiptMarkup } from "./receipt.js";
 
 const me = await mountNav();
 const root = document.getElementById("order-tracking");
@@ -46,9 +47,10 @@ function renderLookup() {
       const plural = (count) => count % 10 === 1 && count % 100 !== 11 ? "позиція" : count % 10 >= 2 && count % 10 <= 4 && (count % 100 < 12 || count % 100 > 14) ? "позиції" : "позицій";
       results.innerHTML = `<div class="tracking-order-list">${orders.orders.map((order) => {
         const count = Number(order.itemCount) || 0;
+        const receiptUrl = `${order.trackingUrl}&receipt=1`;
         return `<article class="tracking-order-card">
           <div><p class="cart-kicker">ЗАМОВЛЕННЯ №${escapeHtml(order.id)}</p><h2>${escapeHtml(statusNames[order.status] || order.status)}</h2><small>${date(order.createdAt)} · ${count} ${plural(count)}</small></div>
-          <div class="tracking-order-total"><b>${formatPrice(order.total)}</b><a class="btn" href="${escapeHtml(order.trackingUrl)}">Відстежити <span>→</span></a></div>
+          <div class="tracking-order-total"><b>${formatPrice(order.total)}</b><a class="btn" href="${escapeHtml(order.trackingUrl)}">Відстежити <span>→</span></a><a class="tracking-receipt-link" href="${escapeHtml(receiptUrl)}" target="_blank" rel="noopener">Квитанція ↗</a></div>
         </article>`;
       }).join("")}</div>`;
     } catch (error) {
@@ -81,9 +83,16 @@ function render(order) {
     <header class="tracking-head"><div><p class="cart-kicker">LONDÉ BY CVV · ВІДСТЕЖЕННЯ</p><h1>Замовлення №${escapeHtml(order.id)}</h1><p>Останнє оновлення сторінки: ${date(new Date())}</p></div><a href="/track-order.html" class="tracking-home">← Усі мої замовлення</a></header>
     ${cancelled ? `<div class="tracking-cancelled">Замовлення скасовано. Якщо вважаєте, що це помилка, зателефонуйте нам: <a href="tel:+380671400008">+38 067 140 00 08</a>.</div>` : `<ol class="tracking-steps">${steps.map((step, index) => { const done = index < current; const active = index === current; return `<li class="${done ? "is-done" : ""} ${active ? "is-active" : ""}"><span class="tracking-dot">${done ? "✓" : String(index + 1).padStart(2, "0")}</span><div><b>${step.title}</b><small>${step.detail}</small></div></li>`; }).join("")}</ol>`}
     <section class="tracking-summary"><div><p class="cart-kicker">СКЛАД ЗАМОВЛЕННЯ</p>${order.items.map((item) => `<div class="tracking-item"><span>${escapeHtml(item.product_name)} <b>×${item.quantity}</b></span><strong>${formatPrice(item.price * item.quantity)}</strong></div>`).join("")}<div class="tracking-total"><span>Разом</span><b>${formatPrice(order.total)}</b></div></div><aside><p class="cart-kicker">ДОСТАВКА Й ОПЛАТА</p><p><b>Адреса</b><br />${escapeHtml(order.city)}, ${escapeHtml(order.address)}</p><p><b>Статус оплати</b><br />${escapeHtml(paid ? "Оплачено" : proofSubmitted ? "Переказ на перевірці" : confirmed ? "Очікується передоплата" : "Очікує дзвінка менеджера")}</p>${confirmed && !paid && !proofSubmitted ? `<a class="btn" href="/payment.html?order=${encodeURIComponent(order.id)}&token=${encodeURIComponent(token)}">Перейти до оплати <span>→</span></a>` : ""}</aside></section>
-    <footer class="tracking-footer"><span>Сторінка оновлюється автоматично кожні 20 секунд.</span><button class="btn ghost" id="refresh-tracking">Оновити зараз</button></footer>
+    <footer class="tracking-footer"><a class="btn" href="/track-order.html?order=${encodeURIComponent(order.id)}&token=${encodeURIComponent(token)}&receipt=1" target="_blank" rel="noopener">Згенерувати квитанцію <span>↗</span></a><span>Сторінка оновлюється автоматично кожні 20 секунд.</span><button class="btn ghost" id="refresh-tracking">Оновити зараз</button></footer>
   </section>`;
   document.getElementById("refresh-tracking").onclick = load;
+}
+
+function renderReceipt(order) {
+  clearTimeout(refreshTimer);
+  document.body.classList.add("receipt-mode");
+  root.innerHTML = receiptMarkup(order);
+  document.getElementById("print-receipt").addEventListener("click", () => window.print());
 }
 
 function showError(message) {
@@ -96,8 +105,11 @@ async function load() {
   if (!id || !token) return showError("Перевірте приватне посилання для відстеження з підтвердження оформлення.");
   try {
     const order = await api(`/api/orders/${encodeURIComponent(id)}/tracking?token=${encodeURIComponent(token)}`);
-    render(order);
-    if (!["done", "cancelled"].includes(order.status)) refreshTimer = setTimeout(load, 20000);
+    if (params.get("receipt") === "1") renderReceipt(order);
+    else {
+      render(order);
+      if (!["done", "cancelled"].includes(order.status)) refreshTimer = setTimeout(load, 20000);
+    }
   } catch (error) {
     showError(error.message);
   }

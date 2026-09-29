@@ -330,7 +330,7 @@ publicRouter.post("/orders/lookup", asyncHandler(async (req, res) => {
 
 async function paymentOrder(id, token) {
   const { rows } = await pool.query(
-    `SELECT id, total, status, payment_status, payment_provider, payment_amount, payment_receipt,
+    `SELECT id, customer_name, total, status, payment_status, payment_provider, payment_amount, payment_receipt,
             payment_proof_url, payment_proof_at, payment_confirmed_at, payment_token,
             city, address, created_at, confirmed_at
      FROM orders WHERE id = $1 AND payment_token = $2`,
@@ -365,6 +365,7 @@ publicRouter.get("/orders/:id/tracking", asyncHandler(async (req, res) => {
   );
   res.json({
     id: order.id,
+    customerName: order.customer_name,
     status: order.status,
     paymentStatus: order.payment_status,
     total: order.total,

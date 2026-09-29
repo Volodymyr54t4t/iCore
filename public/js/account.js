@@ -46,6 +46,7 @@ function renderOrders() {
         ? `<a class="btn" href="/payment.html?order=${o.id}&token=${encodeURIComponent(o.payment_token)}">Передоплата 50%</a>`
         : o.payment_status === "proof_submitted" ? `<span class="status-pill status-processing">Скрін передоплати перевіряється</span>` : "";
       const trackingAction = o.payment_token ? `<a class="btn ghost" href="/track-order.html?order=${o.id}&token=${encodeURIComponent(o.payment_token)}">Відстежити</a>` : "";
+      const receiptAction = o.payment_token ? `<a class="btn ghost" href="/track-order.html?order=${o.id}&token=${encodeURIComponent(o.payment_token)}&receipt=1" target="_blank" rel="noopener">Квитанція ↗</a>` : "";
       return `
         <article class="order-card account-order-card">
           <div class="order-head">
@@ -60,6 +61,7 @@ function renderOrders() {
           <ul class="order-items">${items}</ul>
           <div class="order-actions">
             ${trackingAction}
+            ${receiptAction}
             ${paymentAction}
             ${canRepeat ? `<button class="btn ghost" data-repeat="${o.id}">Повторити</button>` : ""}
             ${canCancel ? `<button class="btn danger" data-cancel="${o.id}">Скасувати</button>` : ""}
