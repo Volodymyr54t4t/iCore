@@ -149,7 +149,7 @@ export function nav(me = null) {
   return `
     <header class="nav">
       <div class="nav-inner">
-        <a class="logo" href="/" aria-label="CVV Electronics — на головну">CVV <span>ELECTRONICS</span></a>
+        <a class="logo" href="/" aria-label="LONDÉ by CVV — на головну"><img src="/images/londe-logo.png" alt="" /><span>LONDÉ <small>BY CVV</small></span></a>
         <nav class="nav-links">
           <a href="/#catalog">Каталог</a>
           <a href="/#iphone">iPhone</a>
@@ -175,7 +175,20 @@ export async function mountNav() {
   updateCartBadge();
   updateWishlistBadge();
   await applySiteContent();
+  mountSiteFooter();
   return me;
+}
+
+function mountSiteFooter() {
+  if (document.querySelector("footer")) return;
+  const footer = document.createElement("footer");
+  footer.className = "footer site-footer";
+  footer.innerHTML = `
+    <a class="footer-logo" href="/" aria-label="LONDÉ by CVV — на головну"><img src="/images/londe-logo.png" alt="LONDÉ by CVV" /></a>
+    <p>Техніка, сервіс і увага до деталей.</p>
+    <nav aria-label="Інформація про магазин"><a href="/about.html">Про нас</a><a href="/delivery.html">Доставка й оплата</a><a href="/warranty.html">Гарантія</a><a href="/faq.html">FAQ</a><a href="/contacts.html">Контакти</a></nav>
+  `;
+  document.body.append(footer);
 }
 
 async function applySiteContent() {

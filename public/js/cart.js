@@ -45,7 +45,7 @@ function render() {
             const max = live?.stock > 0 ? Math.min(99, live.stock) : 99;
             return `<article class="cart-item${unavailableItem ? " is-unavailable" : ""}" data-item="${escapeAttr(item.id)}">
               <a class="cart-item-image" href="/product.html?slug=${encodeURIComponent(item.slug || "")}" aria-label="Переглянути ${escapeAttr(item.name)}">
-                ${item.imageUrl ? `<img src="${escapeAttr(item.imageUrl)}" alt="${escapeAttr(item.name)}" loading="lazy" />` : `<span>CVV</span>`}
+                ${item.imageUrl ? `<img src="${escapeAttr(item.imageUrl)}" alt="${escapeAttr(item.name)}" loading="lazy" />` : `<img class="cart-item-logo" src="/images/londe-logo.png" alt="" />`}
               </a>
               <div class="cart-item-info">
                 <div class="cart-item-topline"><span class="cart-stock ${unavailableItem ? "is-out" : live?.available === true ? "is-in" : "is-checking"}">${unavailableItem ? "Немає в наявності" : live?.available === true ? "Є в наявності" : live ? "Не вдалося перевірити" : "Перевіряємо наявність…"}</span></div>

@@ -184,15 +184,29 @@ function orderText(order) {
 }
 
 async function notifyOwners(text, extra = {}) {
-  if (!botInstance) return;
+  if (!botInstance) return { sent: 0, failed: 0 };
   const owners = await repo.listOwners();
+  if (!owners.length) {
+    console.error("Telegram-сповіщення не надіслано: власника не налаштовано. Відкрийте приватний чат із ботом, надішліть /start, потім /owner і пароль адмінки.");
+    return { sent: 0, failed: 0 };
+  }
+  let sent = 0;
+  let failed = 0;
   for (const chatId of owners) {
     try {
       await botInstance.api.sendMessage(chatId, text, { parse_mode: "HTML", ...extra });
+      sent += 1;
     } catch (error) {
-      console.error("Не вдалося написати власнику", chatId, error.message);
+      failed += 1;
+      const reason = error.description || error.message || "невідома помилка Telegram";
+      if (/chat not found|bot was blocked|user is deactivated|can't initiate conversation/i.test(reason)) {
+        console.error(`Не доставлено власнику ${chatId}: бот не має доступу до особистого чату. Власнику треба відкрити приватний чат із цим ботом і натиснути Start. Деталі Telegram: ${reason}`);
+      } else {
+        console.error(`Не вдалося надіслати Telegram-сповіщення власнику ${chatId}: ${reason}`);
+      }
     }
   }
+  return { sent, failed };
 }
 
 export async function notifyNewOrder(order) {
@@ -397,7 +411,7 @@ export async function startTelegramBot() {
   });
 
   bot.catch((err) => {
-    console.error("Telegram error:", err.error?.message || err.message || err);
+    console.error("Telegram error:", err.error?.description || err.error?.message || err.message || err);
   });
 
   bot.command("cancel", async (ctx) => {
@@ -433,6 +447,10 @@ export async function startTelegramBot() {
   });
 
   bot.command("owner", async (ctx) => {
+    if (ctx.chat.type !== "private") {
+      await ctx.reply("Активація власника працює лише в особистому чаті з ботом. Відкрийте профіль бота, натисніть Start і надішліть /owner пароль адмінки тут, у приватному чаті.");
+      return;
+    }
     const password = ctx.match?.trim() || "";
     const expected = process.env.TELEGRAM_OWNER_SECRET || process.env.ADMIN_PASSWORD || "";
     if (!expected || password !== expected) {
@@ -600,8 +618,8 @@ export async function startTelegramBot() {
           `Статус замовлення №${id}: <b>${STATUS[status]}</b>`,
           { parse_mode: "HTML" }
         );
-      } catch {
-        /* user blocked bot */
+      } catch (error) {
+        console.error(`Не вдалося повідомити клієнта про замовлення №${id} у чат ${order.telegram_chat_id}: ${error.description || error.message}`);
       }
     }
   });
@@ -695,10 +713,11 @@ export async function startTelegramBot() {
 
     if (ctx.session.flow === "support" && text) {
       resetFlow(ctx);
-      await notifyOwners(`💬 <b>Звернення</b> від ${esc(userLabel(ctx.from))}\n\n${esc(text)}`, {
+      const delivery = await notifyOwners(`💬 <b>Звернення</b> від ${esc(userLabel(ctx.from))}\n\n${esc(text)}`, {
         reply_markup: new InlineKeyboard().text("Відповісти", `reply:${ctx.from.id}`),
       });
-      return ctx.reply("Повідомлення надіслано. Відповімо якнайшвидше.");
+      if (!delivery.sent) return ctx.reply("Не вдалося передати звернення власнику. Будь ласка, зв’яжіться з магазином за телефоном +38 067 140 00 08.");
+      return ctx.reply("Повідомлення передано власнику. Відповімо якнайшвидше.");
     }
 
     if (ctx.session.flow === "reply_user" && text) {
@@ -708,7 +727,8 @@ export async function startTelegramBot() {
       try {
         await bot.api.sendMessage(chatId, `💬 Відповідь iCore:\n\n${text}`);
         return ctx.reply("Відповідь доставлено.");
-      } catch {
+      } catch (error) {
+        console.error(`Не вдалося відповісти користувачу ${chatId}: ${error.description || error.message}`);
         return ctx.reply("Не вдалося надіслати — клієнт, ймовірно, зупинив бота.");
       }
     }
@@ -717,6 +737,7 @@ export async function startTelegramBot() {
       const users = await repo.listCustomers();
       resetFlow(ctx);
       let ok = 0;
+      let failed = 0;
       for (const u of users) {
         try {
           if (ctx.message.photo) {
@@ -727,10 +748,10 @@ export async function startTelegramBot() {
           }
           ok += 1;
         } catch {
-          /* skip */
+          failed += 1;
         }
       }
-      return ctx.reply(`Розсилку завершено: ${ok} з ${users.length}.`);
+      return ctx.reply(`Розсилку завершено: доставлено ${ok} з ${users.length}${failed ? `, не доставлено ${failed}` : ""}.`);
     }
 
     if (ctx.session.flow === "edit_stock" && text && (await repo.isOwner(ctx.from.id))) {

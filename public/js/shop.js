@@ -90,7 +90,7 @@ async function renderDeals() {
     grid.innerHTML = deals.map((p, index) => {
       const percent = Math.round((1 - Number(p.price) / Number(p.oldPrice)) * 100);
       return `<a class="deal-card reveal-on-scroll" style="--deal-index:${index}" href="/product.html?slug=${encodeURIComponent(p.slug)}">
-        <span class="deal-badge">−${percent}%</span><div class="deal-image">${p.imageUrl ? `<img src="${escapeHtml(p.imageUrl)}" alt="${escapeHtml(p.name)}" loading="lazy" />` : `<span>CVV</span>`}<i aria-hidden="true">↗</i></div>
+        <span class="deal-badge">−${percent}%</span><div class="deal-image">${p.imageUrl ? `<img src="${escapeHtml(p.imageUrl)}" alt="${escapeHtml(p.name)}" loading="lazy" />` : `<img class="brand-product-mark" src="/images/londe-logo.png" alt="" />`}<i aria-hidden="true">↗</i></div>
         <div class="deal-copy"><small>${escapeHtml(p.category?.name || "Спеціальна ціна")}</small><h3>${escapeHtml(p.name)}</h3><p>${escapeHtml(p.tagline || "Актуальна пропозиція з каталогу")}</p><div><b>${formatPrice(p.price)}</b><del>${formatPrice(p.oldPrice)}</del><span>−${formatPrice(Number(p.oldPrice) - Number(p.price))}</span></div></div>
       </a>`;
     }).join("");

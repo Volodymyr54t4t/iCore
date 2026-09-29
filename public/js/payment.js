@@ -11,7 +11,7 @@ let refreshTimer;
 function escapeHtml(value) { return String(value || "").replace(/[&<>"']/g, (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c])); }
 function error(message) { root.innerHTML = `<div class="empty"><h2>Не вдалося відкрити рахунок</h2><p>${escapeHtml(message)}</p><a class="btn" href="/">На головну</a></div>`; }
 function receipt(order) {
-  return `<aside class="payment-receipt"><div class="receipt-brand">CVV ELECTRONICS <span>STORE</span></div><p>Рахунок на передоплату</p><h2>${order.receipt}</h2><div><span>Замовлення</span><b>№${order.id}</b></div><div><span>Повна сума</span><b>${formatPrice(order.total)}</b></div><div class="receipt-total"><span>Передоплата 50%</span><b>${formatPrice(order.paymentAmount)}</b></div><small>Залишок ${formatPrice(order.total - order.paymentAmount)} та його спосіб оплати погодьте з менеджером.</small></aside>`;
+  return `<aside class="payment-receipt"><div class="receipt-brand"><img src="/images/londe-logo.png" alt="LONDÉ by CVV" /><span>STORE</span></div><p>Рахунок на передоплату</p><h2>${order.receipt}</h2><div><span>Замовлення</span><b>№${order.id}</b></div><div><span>Повна сума</span><b>${formatPrice(order.total)}</b></div><div class="receipt-total"><span>Передоплата 50%</span><b>${formatPrice(order.paymentAmount)}</b></div><small>Залишок ${formatPrice(order.total - order.paymentAmount)} та його спосіб оплати погодьте з менеджером.</small></aside>`;
 }
 async function show() {
   clearTimeout(refreshTimer);
