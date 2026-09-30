@@ -1,0 +1,18 @@
+{
+  "id": "/",
+  "name": "LONDÉ BY CVV — Apple Store",
+  "short_name": "LONDÉ",
+  "description": "Преміальний простір техніки Apple з консультацією та підтримкою по всій Україні.",
+  "lang": "uk",
+  "start_url": "/?source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "portrait-primary",
+  "background_color": "#090806",
+  "theme_color": "#090806",
+  "categories": ["shopping", "lifestyle"],
+  "icons": [
+    { "src": "/images/pwa-icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
