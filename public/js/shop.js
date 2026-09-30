@@ -1,4 +1,5 @@
 import { api, formatPrice, addToCart, mountNav, showCartConfirmation, isFavorite, toggleFavorite, toast } from "./api.js";
+import { addCompared, isCompared, removeCompared, getCompared, COMPARE_LIMIT } from "./compare.js";
 
 await mountNav();
 
@@ -55,6 +56,7 @@ function card(p, index = 0) {
           ${discount ? `<span class="product-discount">−${discount}%</span>` : ""}
         </div>
         <button class="product-card-favorite ${isFavorite(p.id) ? "is-active" : ""}" type="button" data-favorite="${p.id}" aria-label="${isFavorite(p.id) ? "Прибрати з обраного" : "Додати в обране"}" aria-pressed="${isFavorite(p.id)}">♥</button>
+        <button class="product-card-compare ${isCompared(p.id) ? "is-selected" : ""}" type="button" data-compare="${p.id}" aria-label="${isCompared(p.id) ? "Прибрати з порівняння" : "Додати до порівняння"}" aria-pressed="${isCompared(p.id)}">${isCompared(p.id) ? "✓ Порівняно" : "⇄ Порівняти"}</button>
         <button class="product-card-open" type="button" data-quick-view="${p.id}" aria-label="Швидкий перегляд ${p.name}"><span>↗</span></button>
       </div>
       <div class="card-body">
@@ -197,6 +199,23 @@ facetsEl.addEventListener("change", (event) => {
 moreEl.addEventListener("click", () => { offset += pageSize; load({ append: true }); });
 
 productsEl.addEventListener("click", (e) => {
+  const compare = e.target.closest("[data-compare]");
+  if (compare) {
+    const product = window.__products.find((p) => String(p.id) === compare.dataset.compare);
+    if (!product) return;
+    if (isCompared(product.id)) {
+      removeCompared(product.id);
+      toast("Прибрано з порівняння");
+      return;
+    }
+    if (getCompared().length >= COMPARE_LIMIT) { toast("Можна порівняти до 4 товарів"); return; }
+    compare.disabled = true;
+    api(`/api/products/${encodeURIComponent(product.slug)}`).then((details) => {
+      const result = addCompared({ ...product, ...details });
+      toast(result.added ? "Додано до порівняння" : result.limit ? "Можна порівняти до 4 товарів" : "Товар уже в порівнянні");
+    }).catch((error) => toast(error.message || "Не вдалося завантажити характеристики")).finally(() => { compare.disabled = false; });
+    return;
+  }
   const favorite = e.target.closest("[data-favorite]");
   if (favorite) {
     const product = window.__products.find((p) => String(p.id) === favorite.dataset.favorite);

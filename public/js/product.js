@@ -1,4 +1,5 @@
 import { api, formatPrice, addToCart, mountNav, showCartConfirmation, getRecentProducts, isFavorite, rememberProduct, toggleFavorite, toast } from "./api.js";
+import { addCompared, isCompared, removeCompared } from "./compare.js";
 
 await mountNav();
 
@@ -47,7 +48,7 @@ try {
     <div class="product-layout">
       <div class="product-photo"><img src="${p.imageUrl}" alt="${p.name}" />${discount ? `<span class="product-page-discount">−${discount}%</span>` : ""}</div>
       <div class="product-details">
-        <div class="product-detail-top"><p class="muted">${p.category.name}</p><button class="detail-favorite ${isFavorite(p.id) ? "is-active" : ""}" type="button" id="favorite" aria-label="Додати в обране">♥</button></div>
+        <div class="product-detail-top"><p class="muted">${p.category.name}</p><div class="product-detail-actions"><button class="detail-compare ${isCompared(p.id) ? "is-selected" : ""}" type="button" data-compare="${p.id}" aria-pressed="${isCompared(p.id)}">${isCompared(p.id) ? "✓ У порівнянні" : "⇄ Порівняти"}</button><button class="detail-favorite ${isFavorite(p.id) ? "is-active" : ""}" type="button" id="favorite" aria-label="Додати в обране">♥</button></div></div>
         <h1 class="section-title">${p.name}</h1>
         <p>${p.tagline}</p>
         ${renderDescription(p.description)}
@@ -76,6 +77,11 @@ try {
     event.currentTarget.classList.toggle("is-active", added);
     event.currentTarget.setAttribute("aria-label", added ? "Прибрати з обраного" : "Додати в обране");
     toast(added ? "Додано в обране" : "Прибрано з обраного");
+  });
+  page.querySelector("[data-compare]")?.addEventListener("click", (event) => {
+    if (isCompared(p.id)) { removeCompared(p.id); toast("Прибрано з порівняння"); return; }
+    const result = addCompared(p);
+    toast(result.added ? "Додано до порівняння" : result.limit ? "Можна порівняти до 4 товарів" : "Товар уже в порівнянні");
   });
   document.getElementById("share")?.addEventListener("click", async () => {
     const shareData = { title: p.name, text: `${p.name} — LONDÉ BY CVV`, url: location.href };

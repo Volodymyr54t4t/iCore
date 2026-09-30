@@ -1,3 +1,5 @@
+import { initCompareBar } from "./compare.js";
+
 export function formatPrice(n) {
   return new Intl.NumberFormat("uk-UA").format(n) + " ₴";
 }
@@ -176,6 +178,7 @@ export async function mountNav() {
   updateWishlistBadge();
   await applySiteContent();
   mountSiteFooter();
+  initCompareBar();
   return me;
 }
 
