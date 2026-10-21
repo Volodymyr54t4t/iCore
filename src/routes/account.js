@@ -5,6 +5,7 @@ import { pool } from "../db/pool.js";
 import { cookieOptions, jwtSecret, requireCustomer } from "../middleware/auth.js";
 import { asyncHandler } from "../utils/async.js";
 import { logActivity } from "../services/activity.js";
+import { cancelAccountReservation, getCustomerReservation, listCustomerReservations, signReservation } from "../services/reservations.js";
 
 export const accountRouter = Router();
 
@@ -37,6 +38,7 @@ async function attachPastOrders(customerId, email) {
      WHERE customer_id IS NULL AND lower(customer_email) = lower($2)`,
     [customerId, email]
   );
+  await pool.query(`UPDATE reservations SET customer_id=$1 WHERE customer_id IS NULL AND lower(customer_email)=lower($2)`, [customerId, email]);
 }
 
 async function ordersFor(customerId) {
@@ -182,6 +184,28 @@ accountRouter.patch("/password", requireCustomer, asyncHandler(async (req, res) 
 
 accountRouter.get("/orders", requireCustomer, asyncHandler(async (req, res) => {
   res.json(await ordersFor(req.customer.id));
+}));
+
+accountRouter.get("/reservations", requireCustomer, asyncHandler(async (req, res) => {
+  res.set("Cache-Control", "no-store");
+  res.json(await listCustomerReservations(req.customer.id));
+}));
+
+accountRouter.get("/reservations/:id", requireCustomer, asyncHandler(async (req, res) => {
+  res.set("Cache-Control", "no-store");
+  const reservation = await getCustomerReservation(req.params.id, null, req.customer.id);
+  if (!reservation) return res.status(404).json({ error: "Бронювання не знайдено" });
+  res.json(reservation);
+}));
+
+accountRouter.patch("/reservations/:id/cancel", requireCustomer, asyncHandler(async (req, res) => {
+  try { res.json(await cancelAccountReservation(req.params.id, req.customer.id)); }
+  catch (error) { res.status(error.status || 400).json({ error: error.message || "Не вдалося скасувати бронювання" }); }
+}));
+
+accountRouter.post("/reservations/:id/sign", requireCustomer, asyncHandler(async (req, res) => {
+  try { res.json(await signReservation(req.params.id, { customerId: req.customer.id, strokes: req.body?.strokes })); }
+  catch (error) { res.status(error.status || 400).json({ error: error.message || "Не вдалося зберегти підпис" }); }
 }));
 
 accountRouter.patch("/orders/:id/cancel", requireCustomer, asyncHandler(async (req, res) => {

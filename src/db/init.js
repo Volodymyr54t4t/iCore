@@ -57,6 +57,33 @@ CREATE TABLE IF NOT EXISTS order_items (
   price INTEGER NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS reservations (
+  id SERIAL PRIMARY KEY,
+  customer_id INTEGER,
+  product_id INTEGER REFERENCES products(id) ON DELETE SET NULL,
+  product_name TEXT NOT NULL,
+  product_slug TEXT NOT NULL DEFAULT '',
+  product_image TEXT NOT NULL DEFAULT '',
+  quantity INTEGER NOT NULL CHECK (quantity > 0),
+  unit_price INTEGER NOT NULL CHECK (unit_price >= 0),
+  stock_deducted BOOLEAN NOT NULL DEFAULT FALSE,
+  customer_name TEXT NOT NULL,
+  customer_phone TEXT NOT NULL,
+  customer_email TEXT NOT NULL,
+  city TEXT NOT NULL DEFAULT '',
+  notes TEXT NOT NULL DEFAULT '',
+  manager_note TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'new' CHECK (status IN ('new','confirmed','cancelled','expired','completed')),
+  access_token_hash TEXT NOT NULL,
+  signed_receipt_svg_url TEXT NOT NULL DEFAULT '',
+  signed_at TIMESTAMPTZ,
+  expires_at TIMESTAMPTZ NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS reservations_status_created_idx ON reservations(status, created_at DESC);
+CREATE INDEX IF NOT EXISTS reservations_expiration_idx ON reservations(status, expires_at);
+
 CREATE TABLE IF NOT EXISTS telegram_users (
   chat_id BIGINT PRIMARY KEY,
   username TEXT,
@@ -197,6 +224,12 @@ export async function initDatabase() {
   }
 
   await ensureColumn("orders", "telegram_chat_id", "telegram_chat_id BIGINT");
+  await ensureColumn("reservations", "customer_id", "customer_id INTEGER REFERENCES customers(id) ON DELETE SET NULL");
+  await ensureColumn("reservations", "signed_receipt_svg_url", "signed_receipt_svg_url TEXT NOT NULL DEFAULT ''");
+  await ensureColumn("reservations", "signed_at", "signed_at TIMESTAMPTZ");
+  const { rows: reservationCustomerFk } = await pool.query(`SELECT 1 FROM information_schema.table_constraints
+    WHERE table_name='reservations' AND constraint_name='reservations_customer_id_fkey' AND constraint_type='FOREIGN KEY'`);
+  if (!reservationCustomerFk.length) await pool.query("ALTER TABLE reservations ADD CONSTRAINT reservations_customer_id_fkey FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE SET NULL");
   await ensureColumn("products", "telegram_file_id", "telegram_file_id TEXT NOT NULL DEFAULT ''");
   await ensureColumn(
     "orders",

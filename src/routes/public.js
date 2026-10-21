@@ -2,7 +2,8 @@ import { Router } from "express";
 import { pool } from "../db/pool.js";
 import { asyncHandler } from "../utils/async.js";
 import { createOrder } from "../services/orders.js";
-import { notifyNewOrder } from "../telegram/bot.js";
+import { sendOrderConfirmation } from "../services/orderMail.js";
+import { notifyNewOrder, notifyNewReservation } from "../telegram/bot.js";
 import { readCustomer } from "../middleware/auth.js";
 import { logActivity } from "../services/activity.js";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -10,6 +11,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { sendContactMail } from "../services/contactMail.js";
 import { subscribeNewsletter } from "../services/newsletter.js";
+import { cancelCustomerReservation, createReservation, getCustomerReservation, signReservation } from "../services/reservations.js";
 
 export const publicRouter = Router();
 
@@ -17,6 +19,16 @@ const contactAttempts = new Map();
 const subscribeAttempts = new Map();
 const reviewAttempts = new Map();
 const orderLookupAttempts = new Map();
+const reservationAttempts = new Map();
+
+function allowReservationRequest(ip) {
+  const now = Date.now();
+  const attempts = (reservationAttempts.get(ip) || []).filter((time) => now - time < 30 * 60 * 1000);
+  if (attempts.length >= 5) return false;
+  attempts.push(now);
+  reservationAttempts.set(ip, attempts);
+  return true;
+}
 
 function allowOrderLookup(ip) {
   const now = Date.now();
@@ -285,6 +297,12 @@ publicRouter.post("/orders", asyncHandler(async (req, res) => {
       customerId: customer?.id || null,
     });
     notifyNewOrder(order).catch((error) => console.error("Telegram notify:", error.message));
+    let emailSent = false;
+    try {
+      emailSent = await sendOrderConfirmation(order);
+    } catch (error) {
+      console.error("Order confirmation email:", error.message);
+    }
     res.status(201).json({
       id: order.id,
       total: order.total,
@@ -292,10 +310,48 @@ publicRouter.post("/orders", asyncHandler(async (req, res) => {
       receipt: order.receipt,
       paymentUrl: `/payment.html?order=${order.id}&token=${order.paymentToken}`,
       trackingUrl: `/track-order.html?order=${order.id}&token=${order.paymentToken}`,
+      emailSent,
       account: Boolean(customer),
     });
   } catch (error) {
     res.status(400).json({ error: error.message || "Не вдалося оформити замовлення" });
+  }
+}));
+
+publicRouter.post("/reservations", asyncHandler(async (req, res) => {
+  if (!allowReservationRequest(req.ip)) return res.status(429).json({ error: "Забагато спроб. Спробуйте ще раз трохи пізніше." });
+  try {
+    const customer = readCustomer(req);
+    const reservation = await createReservation({ ...(req.body || {}), customerId: customer?.id || null });
+    notifyNewReservation({ ...reservation, customerName: String(req.body?.name || "").trim(), customerPhone: String(req.body?.phone || "").trim(), customerEmail: String(req.body?.email || "").trim(), city: String(req.body?.city || "").trim(), notes: String(req.body?.notes || "").trim() }).catch((error) => console.error("Telegram reservation notification:", error.message));
+    res.status(201).json({ ...reservation, manageUrl: `/reservation.html?id=${reservation.id}&token=${reservation.accessToken}` });
+  } catch (error) {
+    res.status(error.status || 400).json({ error: error.message || "Не вдалося створити бронювання" });
+  }
+}));
+
+publicRouter.get("/reservations/:id", asyncHandler(async (req, res) => {
+  res.set("Cache-Control", "no-store");
+  const reservation = await getCustomerReservation(req.params.id, req.query.token);
+  if (!reservation) return res.status(404).json({ error: "Бронювання не знайдено" });
+  res.json(reservation);
+}));
+
+publicRouter.post("/reservations/:id/cancel", asyncHandler(async (req, res) => {
+  res.set("Cache-Control", "no-store");
+  try {
+    res.json(await cancelCustomerReservation(req.params.id, req.body?.token));
+  } catch (error) {
+    res.status(error.status || 400).json({ error: error.message || "Не вдалося скасувати бронювання" });
+  }
+}));
+
+publicRouter.post("/reservations/:id/sign", asyncHandler(async (req, res) => {
+  res.set("Cache-Control", "no-store");
+  try {
+    res.json(await signReservation(req.params.id, { token: req.body?.token, strokes: req.body?.strokes }));
+  } catch (error) {
+    res.status(error.status || 400).json({ error: error.message || "Не вдалося створити квитанцію" });
   }
 }));
 

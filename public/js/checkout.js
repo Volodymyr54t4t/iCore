@@ -40,8 +40,11 @@ if (!cart.length) {
     try {
       const order = await api("/api/orders", { method: "POST", body: payload });
       saveCart([]);
-      root.innerHTML = `<section class="checkout-success"><div class="checkout-empty-icon">✓</div><p class="cart-kicker">LONDÉ BY CVV · ЗАМОВЛЕННЯ №${escapeHtml(order.id)}</p><h2>Замовлення прийнято</h2><p>Менеджер зателефонує за номером <b>${escapeHtml(payload.phone)}</b>, перепитає склад замовлення й адресу доставки. Після підтвердження тут з’явиться оплата.</p><a class="btn" href="${escapeAttr(order.trackingUrl)}">Відстежити замовлення <span>→</span></a></section>`;
-      toast("Замовлення чекає підтвердження менеджера");
+      const emailMessage = order.emailSent
+        ? `Деталі замовлення та посилання для відстеження вже надіслали на <b>${escapeHtml(payload.email)}</b>.`
+        : `Ми не змогли надіслати лист зараз. Збережіть це посилання для відстеження або зверніться до нас, якщо лист не надійде.`;
+      root.innerHTML = `<section class="checkout-success"><div class="checkout-empty-icon">✓</div><p class="cart-kicker">LONDÉ BY CVV · ЗАМОВЛЕННЯ №${escapeHtml(order.id)}</p><h2>Ваше замовлення вже з нами.</h2><p>${emailMessage}</p><p>Менеджер зателефонує за номером <b>${escapeHtml(payload.phone)}</b>, щоб підтвердити товар і доставку. Після підтвердження тут з’явиться оплата.</p><a class="btn" href="${escapeAttr(order.trackingUrl)}">Відстежити замовлення <span>→</span></a></section>`;
+      toast(order.emailSent ? "Підтвердження надіслано на пошту" : "Замовлення чекає підтвердження менеджера");
     } catch (error) {
       document.getElementById("error").textContent = error.message;
     }

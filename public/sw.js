@@ -62,7 +62,7 @@ self.addEventListener("fetch", (event) => {
     event.respondWith((async () => {
       try {
         const response = await fetch(request);
-        if (response.ok && !url.pathname.startsWith("/admin")) {
+        if (response.ok && !url.pathname.startsWith("/admin") && !["/reserve.html", "/reservation.html"].includes(url.pathname)) {
           const cache = await caches.open(PAGE_CACHE);
           await cache.put(request, response.clone());
         }

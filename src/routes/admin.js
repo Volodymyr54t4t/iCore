@@ -11,6 +11,7 @@ import { reserveJabkoImport, jabkoImportSettings } from "../services/jabkoImport
 import { getWeeklyJabkoJob } from "../services/weeklyJabkoSync.js";
 import { aiConfig, cleanTelegramPost, recordAiOperation, safeOpenAIError, selectAndDraftProducts, shopProductUrl, testOpenAI } from "../services/openaiService.js";
 import { generateDailyBatchNow } from "../services/telegramPostScheduler.js";
+import { deleteReservation, listReservations, updateReservation } from "../services/reservations.js";
 
 export const adminRouter = Router();
 let jabkoJob = null;
@@ -535,6 +536,28 @@ adminRouter.get("/orders", requireAdmin, asyncHandler(async (_req, res) => {
     grouped[item.order_id]?.items.push(item);
   }
   res.json(Object.values(grouped));
+}));
+
+adminRouter.get("/reservations", requireAdmin, asyncHandler(async (_req, res) => {
+  res.json(await listReservations());
+}));
+
+adminRouter.patch("/reservations/:id", requireAdmin, asyncHandler(async (req, res) => {
+  try {
+    const reservation = await updateReservation(req.params.id, req.body || {}, req.admin?.name || req.admin?.email);
+    res.json(reservation);
+  } catch (error) {
+    res.status(error.status || 400).json({ error: error.message || "Не вдалося оновити бронювання" });
+  }
+}));
+
+adminRouter.delete("/reservations/:id", requireAdmin, asyncHandler(async (req, res) => {
+  try {
+    await deleteReservation(req.params.id, req.admin?.name || req.admin?.email);
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(error.status || 400).json({ error: error.message || "Не вдалося видалити бронювання" });
+  }
 }));
 
 adminRouter.patch("/orders/:id", requireAdmin, asyncHandler(async (req, res) => {

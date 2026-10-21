@@ -61,6 +61,7 @@ try {
         </div>
         <div class="row" style="margin-top:24px">
           <button class="btn" id="buy" ${p.isAvailable ? "" : "disabled"}>Додати в кошик</button>
+          <a class="btn ghost" id="reserve-product" href="/reserve.html?product=${encodeURIComponent(p.slug)}" ${p.isAvailable ? "" : 'aria-disabled="true"'}>Забронювати</a>
           <a class="btn ghost" href="/cart.html">Перейти до кошика</a>
           <button class="share-product" id="share" type="button">↗ Поділитися</button>
         </div>

@@ -15,6 +15,7 @@ import { accountRouter } from "./routes/account.js";
 import { startTelegramBot } from "./telegram/bot.js";
 import { startWeeklyJabkoSync } from "./services/weeklyJabkoSync.js";
 import { startTelegramPostScheduler } from "./services/telegramPostScheduler.js";
+import { expireReservations } from "./services/reservations.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -94,6 +95,11 @@ function openBrowser(url) {
 async function start() {
   await createPool();
   await initDatabase();
+  const reservationExpiryTimer = setInterval(() => {
+    expireReservations().catch((error) => console.error("Не вдалося завершити прострочені бронювання:", error.message));
+  }, 60_000);
+  reservationExpiryTimer.unref();
+  expireReservations().catch((error) => console.error("Не вдалося перевірити терміни бронювання:", error.message));
   startWeeklyJabkoSync();
   startTelegramPostScheduler();
 

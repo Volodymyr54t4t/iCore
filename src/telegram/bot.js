@@ -217,6 +217,10 @@ export async function notifyNewOrder(order) {
   });
 }
 
+export async function notifyNewReservation(reservation) {
+  await notifyOwners(`📌 <b>Нове бронювання #${reservation.id}</b>\n\n<b>${esc(reservation.productName)}</b> · ${reservation.quantity} шт.\nСума: ${esc(money(reservation.total))}\nКлієнт: ${esc(reservation.customerName)}\nТелефон: ${esc(reservation.customerPhone)}\nEmail: ${esc(reservation.customerEmail)}\n${reservation.city ? `Місто: ${esc(reservation.city)}\n` : ""}${reservation.notes ? `Коментар: ${esc(reservation.notes)}\n` : ""}\nТермін: ${esc(new Date(reservation.expiresAt).toLocaleString("uk-UA"))}\n\nКерування: /admin#reservations`);
+}
+
 function orderOwnerKeyboard(id, status) {
   const kb = new InlineKeyboard();
   for (const s of STATUSES) {
