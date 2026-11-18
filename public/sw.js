@@ -1,4 +1,4 @@
-const CACHE_VERSION = "londe-pwa-v1";
+const CACHE_VERSION = "londe-pwa-v2";
 const APP_SHELL = `${CACHE_VERSION}-shell`;
 const PAGE_CACHE = `${CACHE_VERSION}-pages`;
 const IMAGE_CACHE = `${CACHE_VERSION}-images`;

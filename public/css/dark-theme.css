@@ -917,3 +917,20 @@ input:focus,select:focus,textarea:focus,.checkout-form input:focus,.checkout-for
   .compare-wrap { padding-top:30px; padding-bottom:70px; }.compare-heading { margin-bottom:24px; }.compare-heading>p:last-child { font-size:12px; }.compare-toolbar { align-items:flex-start; }.compare-toolbar p,.compare-clear-all { font-size:9px; }.compare-table th,.compare-table td { min-width:154px; padding:11px; }.compare-table thead th { width:185px; }.compare-table thead .compare-label-head,.compare-table tbody th { min-width:125px; font-size:10px; }.compare-product-image { height:115px; }.compare-product-name { font-size:11px; }.compare-product-actions .btn { min-height:29px; padding:0 8px; font-size:9px; }
 }
 @media(max-width:420px) { .product-detail-actions { gap:5px; }.detail-compare { min-height:34px; padding:0 9px; font-size:10px; }.compare-dock-actions .btn.ghost { display:none; } }
+
+/* Product page and card overrides for the refined layout */
+.product-card { border-color:rgba(255,255,255,.08); background:linear-gradient(155deg,#1a1d27,#111319); }
+.product-card-media { background:radial-gradient(ellipse at 50% 48%,#303442 0,#1b1e27 65%,#151720 100%); }
+.product-card .product-card-media img { object-fit:contain; transform:none; }
+.product-card:hover .product-card-media img { transform:scale(1.045); }
+.product-photo { background:radial-gradient(ellipse at 50% 45%,#292d39,#171922 72%); }
+.product-photo img { object-fit:contain; padding:0; transform:none; }
+.product-image-note { color:#a7acb8; }
+.product-purchase-card,.product-specification-card { border-color:var(--line); background:#151720; box-shadow:0 15px 40px rgba(0,0,0,.2); }
+.product-old-price span { color:#ffb3b9; background:#3a2025; }
+.product-stock.is-available { color:#9ee4ba; }.product-stock.is-unavailable { color:#e9c47d; }
+.product-perks { color:#d8b873; background:#171a19; }
+.product-perks strong,.product-specification-list dd { color:#eff1f6; }
+.product-specification-list>div { border-color:var(--line); }
+.product-review-jump b { color:#eff1f6; }
+.product-detail-tools a { color:#a7acb8; }
