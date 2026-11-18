@@ -89,7 +89,18 @@ async function resolvePort(preferred) {
 function openBrowser(url) {
   if (process.env.OPEN_BROWSER === "0") return;
   const cmd = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
-  spawn(cmd, [url], { stdio: "ignore", detached: true, shell: process.platform === "win32" }).unref();
+  try {
+    const child = spawn(cmd, [url], { stdio: "ignore", detached: true, shell: process.platform === "win32" });
+    child.on("error", (error) => {
+      console.warn(`Не вдалося автоматично відкрити браузер (${error.message}). Відкрийте вручну: ${url}`);
+    });
+    child.on("close", (code) => {
+      if (code && code !== 0) console.warn(`Команда відкриття браузера завершилася з кодом ${code}. Відкрийте вручну: ${url}`);
+    });
+    child.unref();
+  } catch (error) {
+    console.warn(`Не вдалося автоматично відкрити браузер (${error.message}). Відкрийте вручну: ${url}`);
+  }
 }
 
 async function start() {
