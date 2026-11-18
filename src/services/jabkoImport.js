@@ -47,22 +47,29 @@ function price(value) {
 
 function categoryItems(html, category) {
   const items = [];
-  const cardPattern = /<div\s+class="catalog-product-item">([\s\S]*?)<!--\s*catalog-product-item\s*-->/gi;
-  for (const [, card] of html.matchAll(cardPattern)) {
-    const titleTag = card.match(/<a\b(?=[^>]*class="catalog-product-item--title")[^>]*>/i)?.[0];
+  // Jabko periodically adds classes/attributes to this wrapper. Match the
+  // stable class token and the card terminator instead of the exact markup.
+  const cardPattern = /<div\b(?=[^>]*\bclass\s*=\s*(["'])[^"']*\bcatalog-product-item\b[^"']*\1)[^>]*>([\s\S]*?)<!--\s*catalog-product-item\s*-->/gi;
+  for (const [, , card] of html.matchAll(cardPattern)) {
+    const titleTag = card.match(/<a\b(?=[^>]*\bclass\s*=\s*(["'])[^"']*\bcatalog-product-item--title\b[^"']*\1)[^>]*>/i)?.[0];
     if (!titleTag) continue;
-    const sourceId = attribute(titleTag, "data-id");
-    const sourceUrl = attribute(titleTag, "href");
-    const name = plainText(card.match(/<a\b[^>]*class="catalog-product-item--title"[^>]*>([\s\S]*?)<\/a>/i)?.[1] || "");
-    if (!sourceId || !name || !/^https:\/\/jabko\.ua\/(?:product\/|[^?]+\/[^?]+)$/.test(sourceUrl)) continue;
-    if (isUsedProduct({ name, sourceUrl })) continue;
-    const priceBlock = card.match(/<div\s+class="catalog-product-item--price">([\s\S]*?)<\/div>/i)?.[1] || "";
-    const sourcePrice = price(priceBlock.match(/class="current"[^>]*>([\s\S]*?)<\/span>/i)?.[1]);
-    const sourceOldPrice = price(priceBlock.match(/class="old"[^>]*>([\s\S]*?)<\/span>/i)?.[1]);
+    const sourceId = attribute(titleTag, "data-id") || attribute(titleTag, "data-product-id")
+      || attribute(card.match(/\bdata-(?:product-)?id\s*=\s*(?:["'][^"']+["']|[^\s>]+)/i)?.[0] || "", "data-id")
+      || attribute(card.match(/\bdata-product-id\s*=\s*(?:["'][^"']+["']|[^\s>]+)/i)?.[0] || "", "data-product-id");
+    const sourceUrl = attribute(titleTag, "href") || attribute(card.match(/<a\b[^>]*href\s*=\s*(?:["'][^"']+["']|[^\s>]+)/i)?.[0] || "", "href");
+    const name = plainText(card.match(/<a\b(?=[^>]*\bclass\s*=\s*(["'])[^"']*\bcatalog-product-item--title\b[^"']*\1)[^>]*>([\s\S]*?)<\/a>/i)?.[2] || "");
+    let parsedUrl;
+    try { parsedUrl = new URL(sourceUrl, "https://jabko.ua"); } catch { continue; }
+    if (!sourceId || !name || parsedUrl.protocol !== "https:" || parsedUrl.hostname !== "jabko.ua" || parsedUrl.pathname.split("/").filter(Boolean).length < 2) continue;
+    const canonicalSourceUrl = parsedUrl.href;
+    if (isUsedProduct({ name, sourceUrl: canonicalSourceUrl })) continue;
+    const priceBlock = card.match(/<div\b[^>]*\bclass\s*=\s*(["'])[^"']*\bcatalog-product-item--price\b[^"']*\1[^>]*>([\s\S]*?)<\/div>/i)?.[2] || "";
+    const sourcePrice = price(priceBlock.match(/class\s*=\s*(["'])[^"']*\bcurrent\b[^"']*\1[^>]*>([\s\S]*?)<\/span>/i)?.[2]);
+    const sourceOldPrice = price(priceBlock.match(/class\s*=\s*(["'])[^"']*\bold\b[^"']*\1[^>]*>([\s\S]*?)<\/span>/i)?.[2]);
     const imageMatches = [...card.matchAll(/<img\b[^>]*\bsrc="([^"]+)"[^>]*>/gi)];
     const image = imageMatches.map((match) => attribute(match[0], "src")).find((url) => url.startsWith("https://img.jabko.ua/")) || "";
     if (!sourcePrice) continue;
-    items.push({ sourceId, sourceUrl, name, sourcePrice, sourceOldPrice: sourceOldPrice && sourceOldPrice > sourcePrice ? sourceOldPrice : null, image, category });
+    items.push({ sourceId, sourceUrl: canonicalSourceUrl, name, sourcePrice, sourceOldPrice: sourceOldPrice && sourceOldPrice > sourcePrice ? sourceOldPrice : null, image, category });
   }
   return items;
 }
@@ -94,7 +101,6 @@ async function collectCategory(category, limit = 0, onPage = () => {}) {
       throw new Error(`Пагінація вийшла за межі категорії ${category.slug}`);
     }
   }
-  if (!products.size) throw new Error(`У категорії ${category.slug} не знайдено товарів`);
   return { products: [...products.values()], complete: true, pages: pages.size };
 }
 
@@ -254,7 +260,7 @@ export async function verifyJabkoDatabaseWrite() {
 }
 
 async function runJabkoImportInternal({ limit = 0, dryRun = false, onProgress = () => {} } = {}) {
-  const stats = { found: 0, imported: 0, updated: 0, new: 0, skipped: 0, errors: 0, pages: {}, errorMessages: [], sample: [] };
+  const stats = { found: 0, imported: 0, updated: 0, new: 0, skipped: 0, errors: 0, pages: {}, categoryWarnings: [], errorMessages: [], sample: [] };
   const listings = [];
   let remaining = limit;
   for (let categoryIndex = 0; categoryIndex < CATEGORIES.length; categoryIndex += 1) {
@@ -263,11 +269,13 @@ async function runJabkoImportInternal({ limit = 0, dryRun = false, onProgress = 
     const categoryLimit = limit ? Math.max(1, Math.ceil(remaining / (CATEGORIES.length - categoryIndex))) : 0;
     const result = await collectCategory(category, categoryLimit, (progress) => onProgress({ phase: "collecting", ...progress, stats }));
     stats.pages[category.slug] = result.pages;
+    if (!result.products.length) stats.categoryWarnings.push(`У категорії ${category.slug} не знайдено товарів; попередні товари залишено без змін`);
     listings.push(...result.products);
     if (limit) remaining -= result.products.length;
   }
   const uniqueListings = [...new Map(listings.map((item) => [item.sourceId, item])).values()];
   stats.found = uniqueListings.length;
+  if (!stats.found) throw new Error(`Не знайдено товарів у жодній категорії Ябко (${CATEGORIES.map((category) => category.slug).join(", ")}); базу не змінено`);
   onProgress({ phase: "product-pages", current: 0, total: stats.found, stats });
 
   const enriched = [];
@@ -303,7 +311,8 @@ async function runJabkoImportInternal({ limit = 0, dryRun = false, onProgress = 
   if (!dryRun && limit && !enriched.length) throw new Error("Тестовий імпорт не отримав товарів");
   if (dryRun) return stats;
 
-  const cleaned = await prepareDatabaseForFirstSync();
+  // Never run the one-time legacy cleanup on a partial catalog response.
+  const cleaned = stats.categoryWarnings.length ? false : await prepareDatabaseForFirstSync();
   stats.cleanedLegacyProducts = cleaned;
   const { rows: categories } = await pool.query("SELECT id, slug FROM categories WHERE slug = ANY($1::text[])", [CATEGORIES.map((category) => category.slug)]);
   const categoryIds = Object.fromEntries(categories.map((category) => [category.slug, category.id]));

@@ -56,17 +56,14 @@ function card(p, index = 0) {
           ${discount ? `<span class="product-discount">−${discount}%</span>` : ""}
         </div>
         <button class="product-card-favorite ${isFavorite(p.id) ? "is-active" : ""}" type="button" data-favorite="${p.id}" aria-label="${isFavorite(p.id) ? "Прибрати з обраного" : "Додати в обране"}" aria-pressed="${isFavorite(p.id)}">♥</button>
-        <button class="product-card-compare ${isCompared(p.id) ? "is-selected" : ""}" type="button" data-compare="${p.id}" aria-label="${isCompared(p.id) ? "Прибрати з порівняння" : "Додати до порівняння"}" aria-pressed="${isCompared(p.id)}">${isCompared(p.id) ? "✓ Порівняно" : "⇄ Порівняти"}</button>
-        <button class="product-card-open" type="button" data-quick-view="${p.id}" aria-label="Швидкий перегляд ${p.name}"><span>↗</span></button>
+        <button class="product-card-compare ${isCompared(p.id) ? "is-selected" : ""}" type="button" data-compare="${p.id}" aria-label="${isCompared(p.id) ? "Прибрати з порівняння" : "Додати до порівняння"}" aria-pressed="${isCompared(p.id)}">${isCompared(p.id) ? "✓" : "⇄"}</button>
       </div>
       <div class="card-body">
         <div class="product-card-meta"><span>${p.isAvailable ? "В наявності" : "Під замовлення"}</span><i></i><span>Офіційна гарантія</span></div>
         <h3><a href="/product.html?slug=${encodeURIComponent(p.slug)}">${escapeHtml(p.name)}</a></h3>
-        <div class="tagline">${escapeHtml(p.tagline || "")}</div>
-        <div class="price"><span>${formatPrice(p.price)}</span>${p.oldPrice ? `<span class="old">${formatPrice(p.oldPrice)}</span>` : ""}</div>
-        <div class="row">
-          <button class="btn" data-add="${p.id}" ${p.isAvailable ? "" : "disabled"}>${p.isAvailable ? 'У кошик <span>+</span>' : "Тимчасово немає"}</button>
-          <a class="btn ghost" href="/product.html?slug=${encodeURIComponent(p.slug)}">Детальніше <span>→</span></a>
+        <div class="product-card-purchase">
+          <button class="btn" data-add="${p.id}" ${p.isAvailable ? "" : "disabled"}>${p.isAvailable ? "Купити" : "Немає в наявності"}</button>
+          <div class="product-card-prices"><b>${formatPrice(p.price)}</b>${p.oldPrice > p.price ? `<del>${formatPrice(p.oldPrice)}</del>` : ""}</div>
         </div>
       </div>
     </article>

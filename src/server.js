@@ -114,7 +114,7 @@ async function start() {
   startWeeklyJabkoSync();
   startTelegramPostScheduler();
 
-  const preferred = Number(process.env.PORT) || 3000;
+  const preferred = Number(process.env.PORT) || 3001;
   const port = await resolvePort(preferred);
   const shopUrl = `http://localhost:${port}`;
   const adminUrl = `${shopUrl}/admin/login.html`;

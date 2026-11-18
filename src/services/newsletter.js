@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import { pool } from "../db/pool.js";
 import { createMailTransporter, isSmtpConfigured } from "./contactMail.js";
 
-const shopUrl = () => (process.env.SHOP_URL || "http://localhost:3000").replace(/\/$/, "");
+const shopUrl = () => (process.env.SHOP_URL || "http://localhost:3001").replace(/\/$/, "");
 const price = (value) => new Intl.NumberFormat("uk-UA").format(value) + " ₴";
 
 export async function subscribeNewsletter(email) {

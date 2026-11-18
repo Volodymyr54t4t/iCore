@@ -1,6 +1,6 @@
 import { createMailTransporter, isSmtpConfigured } from "./contactMail.js";
 
-const shopUrl = () => (process.env.SHOP_URL || "http://localhost:3000").replace(/\/$/, "");
+const shopUrl = () => (process.env.SHOP_URL || "http://localhost:3001").replace(/\/$/, "");
 const money = (value) => new Intl.NumberFormat("uk-UA").format(value) + " ₴";
 const escapeHtml = (value) => String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#039;");
 
